@@ -76,7 +76,7 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 
 ### 📂 Current Project Structure
 ```
-/home/spec/work/rosa/docling/
+/home/spec/work/rosa/marker/
 ├── core/
 │   ├── adapters/
 │   │   ├── document_parser.py        # ✅ Main document parsing router
@@ -129,7 +129,6 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 ### 🔍 Project Architecture & Implementation Details
 
 #### **Document Parsing System:**
-- **No actual docling library usage** - "docling" is only the project name
 - **Custom XML-based DOCX parsing** via `core/adapters/docx_parser.py`
 - **Document parsing router** via `core/adapters/document_parser.py`
 - **WordprocessingML XML parsing** - direct extraction from DOCX ZIP archives
@@ -170,7 +169,6 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 - **Never hallucinate libraries or functions** – only use known, verified Python packages from `requirements.txt`.
 - **Always confirm file paths and module names** exist before referencing them in code or tests.
 - **Never delete or overwrite existing code** unless explicitly instructed to or as part of a planned refactoring.
-- **IMPORTANT: docling library is NOT actually used** - only listed in requirements but not installed or imported. Use custom XML parsing instead.
 
 ### 📦 Verified Dependencies (from requirements.txt)
 - **`typer`** - CLI framework ✅ actively used
@@ -181,7 +179,6 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 - **`beautifulsoup4`** - HTML/XML parsing ✅ potential use
 - **`python-slugify`** - URL slug generation ✅ actively used for file naming
 - **`rich`** - Terminal formatting ✅ potential use for CLI output
-- **`docling`** - ❌ **NOT INSTALLED/USED** - project name only
 
 ### 🔧 Custom XML Processing Stack
 - **`xml.etree.ElementTree`** - Core XML parsing (built-in Python)
