@@ -5,6 +5,13 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+SERVICE_HEADINGS = {
+    "содержание",
+    "перечень сокращений",
+    "аннотация",
+    "приложение",
+    "приложения",
+}
 
 @dataclass
 class NumberedHeading:
@@ -121,6 +128,9 @@ def extract_headings_with_numbers(docx_path: str) -> List[NumberedHeading]:
             m = re.search(r'(\d+)$', style_id);  level = int(m.group(1)) - 1 if m else None
         text = ''.join(t.text or '' for t in p.findall(".//w:t", NS)).strip()
         if level is None or not text: continue
+        clean = re.sub(r'^\d+(\.\d+)*\.?\s*', '', text).strip().lower()
+        if clean in SERVICE_HEADINGS:
+            continue
 
         number_text = ""; numId = None; ilvl = None
         numPr = ppr.find("w:numPr", NS)
