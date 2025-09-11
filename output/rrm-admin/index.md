@@ -1,0 +1,16 @@
+# Rrm Admin
+
+- [АННОТАЦИЯ](chapters/00-annotatsiia.md)
+- [1 Общие сведения](chapters/01-obshchie-svedeniia.md)
+- [2 Установка и настройка](chapters/02-ustanovka-i-nastroika.md)
+- [3 Веб-интерфейс](chapters/03-veb-interfeis.md)
+- [4 Настройка параметров](chapters/04-nastroika-parametrov.md)
+- [5 Управление поставщиками](chapters/05-upravlenie-postavshchikami.md)
+- [6 Управление ресурсами](chapters/06-upravlenie-resursami.md)
+- [7 Контроль](chapters/07-kontrol.md)
+- [8 Управление автоматизацией](chapters/08-upravlenie-avtomatizatsiei.md)
+- [9 Мониторинг, отчеты и оповещения](chapters/09-monitoring-otchety-i-opoveshcheniia.md)
+- [10 Тарифы](chapters/10-tarify.md)
+- [11 Службы](chapters/11-sluzhby.md)
+- [12 Предоставление ВМ](chapters/12-predostavlenie-vm.md)
+- [13 API](chapters/13-api.md)

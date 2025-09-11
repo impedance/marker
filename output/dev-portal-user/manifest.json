@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "title": "Dev Portal User",
+    "authors": [],
+    "language": "en",
+    "toc": []
+  },
+  "chapters": [
+    {
+      "title": "СОДЕРЖАНИЕ",
+      "path": "chapters/00-soderzhanie.md"
+    },
+    {
+      "title": "1 Общие сведения",
+      "path": "chapters/01-obshchie-svedeniia.md"
+    },
+    {
+      "title": "2 Начало работы с порталом",
+      "path": "chapters/02-nachalo-raboty-s-portalom.md"
+    },
+    {
+      "title": "3 Компоненты пользовательского интерфейса",
+      "path": "chapters/03-komponenty-polzovatelskogo-interfeisa.md"
+    }
+  ],
+  "assets": {}
+}

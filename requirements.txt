@@ -1,0 +1,9 @@
+typer
+pydantic
+pyyaml
+pytest
+lxml
+beautifulsoup4
+python-slugify
+rich
+docling
