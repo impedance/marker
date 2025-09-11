@@ -88,12 +88,18 @@ def _collect_sections(blocks: list) -> List[_Section]:
                 cur_h1 = _Section(normalized_lvl, [nums[0]], ttl, [blk])
                 sections.append(cur_h1)
                 continue
-            if normalized_lvl == 2 and nums and cur_h1:
+            if normalized_lvl == 2 and nums:
                 flush_h2()
-                cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk])
+                # For level 2 sections, use the full numbering as provided
+                # Don't assume it must match the parent H1
+                if len(nums) >= 2:
+                    cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk])
+                else:
+                    # Handle case where level 2 heading has only one number
+                    cur_h2_intro = _Section(normalized_lvl, nums + [0], ttl, [blk])
                 continue
             # H3 and deeper levels should be added to the current H2 section, not create separate files
-            if normalized_lvl >= 3 and nums and cur_h1:
+            if normalized_lvl >= 3 and nums:
                 target = cur_h2_intro or cur_h1
                 if target:
                     target.blocks.append(blk)
@@ -133,11 +139,22 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             writer.write_text(path, md)
             written.append(path)
         elif sec.level == 2:
-            assert h1_dir is not None and last_h1_num == sec.number[0]
-            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
-            path = h1_dir / f"{code}.{safe_title}.md"
-            writer.write_text(path, md)
-            written.append(path)
+            # Handle orphaned level 2 sections (no matching H1 parent)
+            if h1_dir is None or last_h1_num != sec.number[0]:
+                # Create a fallback directory structure for orphaned sections
+                fallback_dir = out_root / f"{code}.{safe_title}"
+                writer.ensure_dir(fallback_dir)
+                writer.ensure_dir(fallback_dir / "images")
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+                path = fallback_dir / "index.md"
+                writer.write_text(path, md)
+                written.append(path)
+            else:
+                # Normal case: level 2 section under existing H1
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+                path = h1_dir / f"{code}.{safe_title}.md"
+                writer.write_text(path, md)
+                written.append(path)
         else:
             md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
             fallback_code = _code_for_levels(sec.number[:3])
