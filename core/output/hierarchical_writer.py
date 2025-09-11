@@ -48,18 +48,26 @@ class _Section:
     blocks: list
 
 
+def _find_min_heading_level(blocks: list) -> int:
+    """Find the minimum heading level in the document."""
+    min_level = float('inf')
+    for blk in blocks:
+        if getattr(blk, "type", None) == "heading":
+            text = blk.text or ""
+            nums, _ = _split_number_and_title(text)
+            if nums:  # Only consider numbered headings
+                min_level = min(min_level, blk.level)
+    return int(min_level) if min_level != float('inf') else 1
+
+
 def _collect_sections(blocks: list) -> List[_Section]:
     """Breaks blocks into hierarchical sections."""
     sections: List[_Section] = []
     cur_h1: Optional[_Section] = None
     cur_h2_intro: Optional[_Section] = None
-    cur_h3: Optional[_Section] = None
 
-    def flush_h3() -> None:
-        nonlocal cur_h3
-        if cur_h3 and cur_h3.blocks:
-            sections.append(cur_h3)
-        cur_h3 = None
+    # Find the minimum heading level and normalize
+    min_level = _find_min_heading_level(blocks)
 
     def flush_h2() -> None:
         nonlocal cur_h2_intro
@@ -72,33 +80,32 @@ def _collect_sections(blocks: list) -> List[_Section]:
             text = blk.text or ""
             lvl = blk.level
             nums, ttl = _split_number_and_title(text)
-            if lvl == 1 and nums:
-                flush_h3()
+            # Normalize level to 1-based hierarchy
+            normalized_lvl = lvl - min_level + 1
+            
+            if normalized_lvl == 1 and nums:
                 flush_h2()
-                cur_h1 = _Section(1, [nums[0]], ttl, [blk])
+                cur_h1 = _Section(normalized_lvl, [nums[0]], ttl, [blk])
                 sections.append(cur_h1)
                 continue
-            if lvl == 2 and nums and cur_h1:
-                flush_h3()
+            if normalized_lvl == 2 and nums and cur_h1:
                 flush_h2()
-                cur_h2_intro = _Section(2, [nums[0], nums[1]], ttl, [blk])
+                cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk])
                 continue
-            if lvl == 3 and nums and cur_h1:
-                flush_h3()
-                if cur_h2_intro:
-                    sections.append(cur_h2_intro)
-                    cur_h2_intro = None
-                cur_h3 = _Section(3, [nums[0], nums[1], nums[2]], ttl, [blk])
+            # H3 and deeper levels should be added to the current H2 section, not create separate files
+            if normalized_lvl >= 3 and nums and cur_h1:
+                target = cur_h2_intro or cur_h1
+                if target:
+                    target.blocks.append(blk)
                 continue
-            target = cur_h3 or cur_h2_intro or cur_h1
+            target = cur_h2_intro or cur_h1
             if target:
                 target.blocks.append(blk)
             continue
-        target = cur_h3 or cur_h2_intro or cur_h1
+        target = cur_h2_intro or cur_h1
         if target:
             target.blocks.append(blk)
 
-    flush_h3()
     flush_h2()
     return sections
 
@@ -126,12 +133,6 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             writer.write_text(path, md)
             written.append(path)
         elif sec.level == 2:
-            assert h1_dir is not None and last_h1_num == sec.number[0]
-            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
-            path = h1_dir / f"{code}.{safe_title}.md"
-            writer.write_text(path, md)
-            written.append(path)
-        elif sec.level == 3:
             assert h1_dir is not None and last_h1_num == sec.number[0]
             md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
             path = h1_dir / f"{code}.{safe_title}.md"
