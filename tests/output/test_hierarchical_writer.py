@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from core.model.internal_doc import InternalDoc, Heading, Paragraph, Text
 
@@ -11,6 +12,7 @@ from core.output.hierarchical_writer import (
     _collect_sections,
     export_docx_hierarchy,
 )
+from doc2chapmd import app
 
 
 def test_split_number_and_title_variants():
@@ -88,3 +90,17 @@ def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
     assert index_content.startswith("# 1 Chapter 1")
     h3_content = Path(tmp_path / "010000.Chapter 1" / "010101.Topic A.md").read_text()
     assert h3_content.startswith("### 1.1.1 Topic A")
+
+
+def test_cli_build_invokes_export(monkeypatch, tmp_path):
+    runner = CliRunner()
+    called: dict[str, tuple[Path, Path]] = {}
+
+    def fake_export(docx_path: Path, out_root: Path):
+        called["args"] = (docx_path, out_root)
+        return []
+
+    monkeypatch.setattr("doc2chapmd.export_docx_hierarchy", fake_export)
+    result = runner.invoke(app, ["build", "file.docx", "--out", str(tmp_path)])
+    assert result.exit_code == 0
+    assert called["args"] == (Path("file.docx"), tmp_path)

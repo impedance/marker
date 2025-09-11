@@ -14,6 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.model.config import load_config, PipelineConfig
 from core.pipeline import DocumentPipeline
+from core.output.hierarchical_writer import export_docx_hierarchy
 
 
 app = typer.Typer(
@@ -192,6 +193,19 @@ def config_create(
     except Exception as e:
         console.print(f"[red]Error creating configuration file:[/red] {e}")
         raise typer.Exit(1)
+
+
+@app.command()
+def build(
+    docx: Path = typer.Argument(..., help="Path to DOCX file"),
+    out: Path = typer.Option(
+        Path("out"), "--out", "-o", help="Output directory for chapter hierarchy"
+    ),
+):
+    """Export DOCX into hierarchical chapter structure."""
+    written = export_docx_hierarchy(docx, out)
+    for path in written:
+        console.print(f"\u2713 {path}")
 
 
 if __name__ == "__main__":
