@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 
 from ..adapters.document_parser import parse_document
 from ..render.markdown_renderer import render_markdown
+from ..render.assets_exporter import export_assets
 from .writer import Writer
 
 _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
@@ -116,6 +117,39 @@ def _collect_sections(blocks: list) -> List[_Section]:
     return sections
 
 
+def _copy_section_images(blocks: list, asset_map: dict, temp_dir: Path, target_dir: Path, writer) -> dict:
+    """Copy images used in this section to the target images directory and return updated asset_map."""
+    import shutil
+    
+    section_asset_map = {}
+    used_image_ids = set()
+    
+    # Find all image blocks in this section
+    for block in blocks:
+        if getattr(block, "type", None) == "image":
+            resource_id = getattr(block, "resource_id", None)
+            if resource_id:
+                used_image_ids.add(resource_id)
+    
+    # Copy relevant images to target directory
+    for resource_id, relative_path in asset_map.items():
+        if resource_id in used_image_ids:
+            # Source file in temp directory
+            source_file = temp_dir / Path(relative_path).name
+            if source_file.exists():
+                # Target file in section's images directory
+                filename = source_file.name
+                target_file = target_dir / filename
+                
+                # Copy file
+                shutil.copy2(source_file, target_file)
+                
+                # Update asset map to point to images/ subdirectory
+                section_asset_map[resource_id] = f"images/{filename}"
+    
+    return section_asset_map
+
+
 def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathLike) -> List[Path]:
     """Exports a DOCX into a folder hierarchy by headings."""
     writer = Writer()
@@ -128,11 +162,18 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
     doc_root = out_root / doc_name
     doc_root.mkdir(parents=True, exist_ok=True)
     
-    doc, _ = parse_document(str(docx_path))
+    doc, resources = parse_document(str(docx_path))
+    
+    # Export assets to a temporary location and get asset_map
+    temp_assets_dir = doc_root / "temp_assets"
+    asset_map = export_assets(resources, str(temp_assets_dir)) if resources else {}
+    
     sections = _collect_sections(doc.blocks)
     written: List[Path] = []
     h1_dir: Optional[Path] = None
     last_h1_num: Optional[int] = None
+    current_images_dir: Optional[Path] = None
+    
     for sec in sections:
         code = _code_for_levels(sec.number)
         safe_title = _clean_filename(sec.title)
@@ -140,8 +181,13 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             last_h1_num = sec.number[0]
             h1_dir = doc_root / f"{code}.{safe_title}"
             writer.ensure_dir(h1_dir)
-            writer.ensure_dir(h1_dir / "images")
-            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+            current_images_dir = h1_dir / "images"
+            writer.ensure_dir(current_images_dir)
+            
+            # Copy relevant images to this section's images directory
+            section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, current_images_dir, writer)
+            
+            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
             path = h1_dir / "index.md"
             writer.write_text(path, md)
             written.append(path)
@@ -151,19 +197,34 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
                 # Create a fallback directory structure for orphaned sections
                 fallback_dir = doc_root / f"{code}.{safe_title}"
                 writer.ensure_dir(fallback_dir)
-                writer.ensure_dir(fallback_dir / "images")
-                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+                current_images_dir = fallback_dir / "images"
+                writer.ensure_dir(current_images_dir)
+                
+                # Copy relevant images to this section's images directory
+                section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, current_images_dir, writer)
+                
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
                 path = fallback_dir / "index.md"
                 writer.write_text(path, md)
                 written.append(path)
             else:
                 # Normal case: level 2 section under existing H1
-                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+                # Copy relevant images to the current H1's images directory
+                section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, current_images_dir, writer)
+                
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
                 path = h1_dir / f"{code}.{safe_title}.md"
                 writer.write_text(path, md)
                 written.append(path)
         else:
-            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
+            # For level 3+ sections, use current images directory or create fallback
+            target_images_dir = current_images_dir if current_images_dir else doc_root / "images"
+            if not current_images_dir:
+                writer.ensure_dir(target_images_dir)
+            
+            section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, target_images_dir, writer)
+            
+            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
             fallback_code = _code_for_levels(sec.number[:3])
             if h1_dir:
                 path = h1_dir / f"{fallback_code}.{safe_title}.md"
@@ -171,4 +232,10 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
                 path = doc_root / f"{fallback_code}.{safe_title}.md"
             writer.write_text(path, md)
             written.append(path)
+    
+    # Clean up temporary assets directory
+    if temp_assets_dir.exists():
+        import shutil
+        shutil.rmtree(temp_assets_dir)
+    
     return written

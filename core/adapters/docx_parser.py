@@ -4,13 +4,14 @@ docx_parser.py
 Parse DOCX files using WordprocessingML (DOCX XML) to extract structured content.
 - Detects headings via w:outlineLvl (preferred) or paragraph style names.
 - Extracts all text content with proper heading levels.
+- Extracts images from word/media/ directory and references from document.xml.
 - Returns structured data compatible with InternalDoc AST format.
 
 This module replaces the generic docling parsing for DOCX files to ensure
 proper chapter extraction and heading numbering preservation.
 """
 from __future__ import annotations
-import zipfile, re, argparse
+import zipfile, re, argparse, hashlib, os
 from pathlib import Path
 from typing import Dict, List, Tuple
 from xml.etree import ElementTree as ET
@@ -23,10 +24,15 @@ from core.model.internal_doc import (
     Paragraph,
     Text as InlineText,
     Inline,
+    Image,
 )
 from core.model.resource_ref import ResourceRef
 
-NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+NS = {
+    'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+    'rel': 'http://schemas.openxmlformats.org/package/2006/relationships'
+}
 
 DEFAULT_HEADING_PATTERNS = [
     r"^Heading\s*(\d)$",           # English
@@ -206,6 +212,99 @@ def _slug(text: str, maxlen: int = 80) -> str:
     s = re.sub(r"\s+", "-", s).strip("-_").lower()
     return (s or "section")[:maxlen].rstrip("-_")
 
+def _load_relationships(rels_xml: bytes | None) -> Dict[str, str]:
+    """Parse relationships XML and return mapping of relationship ID to target path."""
+    if not rels_xml:
+        return {}
+    
+    relationships = {}
+    root = ET.fromstring(rels_xml)
+    
+    for rel in root.findall('.//rel:Relationship', NS):
+        rel_id = rel.attrib.get('Id')
+        target = rel.attrib.get('Target')
+        rel_type = rel.attrib.get('Type')
+        
+        if rel_id and target and 'image' in rel_type:
+            relationships[rel_id] = target
+    
+    return relationships
+
+def _extract_images_from_media(z: zipfile.ZipFile) -> Dict[str, ResourceRef]:
+    """Extract all images from word/media/ directory and create ResourceRef objects."""
+    images = {}
+    
+    # Get list of media files
+    media_files = [name for name in z.namelist() if name.startswith('word/media/')]
+    
+    for media_file in media_files:
+        # Read image content
+        content = z.read(media_file)
+        if not content:
+            continue
+            
+        # Get filename and extension
+        filename = os.path.basename(media_file)
+        _, ext = os.path.splitext(filename)
+        
+        # Determine MIME type from extension
+        mime_type = _get_mime_type_from_extension(ext.lower())
+        
+        # Create SHA256 hash for deduplication
+        sha256_hash = hashlib.sha256(content).hexdigest()
+        
+        # Use filename without extension as resource ID
+        resource_id = os.path.splitext(filename)[0]
+        
+        # Create ResourceRef
+        resource_ref = ResourceRef(
+            id=resource_id,
+            mime_type=mime_type,
+            content=content,
+            sha256=sha256_hash
+        )
+        
+        images[media_file] = resource_ref
+    
+    return images
+
+def _get_mime_type_from_extension(ext: str) -> str:
+    """Get MIME type from file extension."""
+    mime_types = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.bmp': 'image/bmp',
+        '.tiff': 'image/tiff',
+        '.tif': 'image/tiff',
+        '.svg': 'image/svg+xml'
+    }
+    return mime_types.get(ext, 'application/octet-stream')
+
+def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef]) -> List[Image]:
+    """Find all images referenced in a paragraph and return Image blocks."""
+    images = []
+    
+    # Look for drawing elements that contain image references
+    for drawing in p.findall('.//w:drawing', NS):
+        for blip in drawing.findall('.//*[@r:embed]', NS):
+            embed_id = blip.attrib.get(f"{{{NS['r']}}}embed")
+            if embed_id and embed_id in relationships:
+                target_path = relationships[embed_id]
+                full_path = f"word/{target_path}"
+                
+                if full_path in media_images:
+                    resource_ref = media_images[full_path]
+                    # Create Image block
+                    image = Image(
+                        alt=f"Image {resource_ref.id}",  # Simple alt text
+                        resource_id=resource_ref.id
+                    )
+                    images.append(image)
+    
+    return images
+
 def split_docx_by_h1(
     docx_path: str | Path,
     out_dir: str | Path,
@@ -291,23 +390,35 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     with zipfile.ZipFile(docx_path) as z:
         doc_xml = _read(z, "word/document.xml")
         styles_xml = _read(z, "word/styles.xml")
+        rels_xml = _read(z, "word/_rels/document.xml.rels")
+        
+        # Extract images from media directory and create ResourceRef objects
+        media_images = _extract_images_from_media(z)
     
     if not doc_xml:
         raise RuntimeError("word/document.xml not found")
     
     styles_map = _styles_map(styles_xml)
+    relationships = _load_relationships(rels_xml)
     body = ET.fromstring(doc_xml).find(".//w:body", NS)
     if body is None:
         raise RuntimeError("No <w:body> found")
     
     patterns = DEFAULT_HEADING_PATTERNS
     blocks: List[Block] = []
-    resources: List[ResourceRef] = []  # DOCX images would need separate extraction
+    resources: List[ResourceRef] = list(media_images.values())  # Extract all images as resources
     heading_iter = iter(numbered_headings)
     
     for p in body.findall("w:p", NS):
         lvl = _heading_level(p, styles_map, patterns)
         text = _text_of(p)  # Get basic text first
+        
+        # Check for images in this paragraph
+        paragraph_images = _find_images_in_paragraph(p, relationships, media_images)
+        
+        # Add images as separate blocks
+        for image in paragraph_images:
+            blocks.append(image)
         
         if text:  # Only process non-empty paragraphs
             if lvl:
@@ -328,6 +439,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                 # Create paragraph with inline text
                 inlines = [InlineText(content=text)]
                 blocks.append(Paragraph(inlines=inlines))
+        elif paragraph_images:
+            # If paragraph has no text but has images, we've already added the images above
+            pass
     
     internal_doc = InternalDoc(blocks=blocks)
     return internal_doc, resources
