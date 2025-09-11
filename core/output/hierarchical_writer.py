@@ -121,6 +121,13 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
     writer = Writer()
     out_root = Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
+    
+    # Extract document name from path and create document folder
+    docx_path = Path(docx_path)
+    doc_name = _clean_filename(docx_path.stem)
+    doc_root = out_root / doc_name
+    doc_root.mkdir(parents=True, exist_ok=True)
+    
     doc, _ = parse_document(str(docx_path))
     sections = _collect_sections(doc.blocks)
     written: List[Path] = []
@@ -131,7 +138,7 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
         safe_title = _clean_filename(sec.title)
         if sec.level == 1:
             last_h1_num = sec.number[0]
-            h1_dir = out_root / f"{code}.{safe_title}"
+            h1_dir = doc_root / f"{code}.{safe_title}"
             writer.ensure_dir(h1_dir)
             writer.ensure_dir(h1_dir / "images")
             md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
@@ -142,7 +149,7 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             # Handle orphaned level 2 sections (no matching H1 parent)
             if h1_dir is None or last_h1_num != sec.number[0]:
                 # Create a fallback directory structure for orphaned sections
-                fallback_dir = out_root / f"{code}.{safe_title}"
+                fallback_dir = doc_root / f"{code}.{safe_title}"
                 writer.ensure_dir(fallback_dir)
                 writer.ensure_dir(fallback_dir / "images")
                 md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), asset_map={})
@@ -161,7 +168,7 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             if h1_dir:
                 path = h1_dir / f"{fallback_code}.{safe_title}.md"
             else:
-                path = out_root / f"{fallback_code}.{safe_title}.md"
+                path = doc_root / f"{fallback_code}.{safe_title}.md"
             writer.write_text(path, md)
             written.append(path)
     return written
