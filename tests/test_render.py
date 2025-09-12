@@ -114,3 +114,25 @@ def test_render_shebang_code_block():
     markdown_output = render_markdown(doc, {})
     expected = "```bash\n#!/bin/bash\necho hi\n```"
     assert markdown_output == expected
+
+
+def test_render_image_with_sign_format():
+    """Tests that images are rendered in the new sign-image format with document name and caption."""
+    # Arrange
+    doc = InternalDoc(blocks=[
+        Image(resource_id="img_1", alt="Image image80", caption="Рисунок 39 – Описание изображения"),
+    ])
+    asset_map = {"img_1": "/images/test-document/040300.Задачи/image80.png"}
+    document_name = "test-document"
+    
+    # Act
+    markdown_output = render_markdown(doc, asset_map, document_name)
+    
+    # Assert
+    expected_markdown = (
+        "::sign-image\n"
+        "src: /images/test-document/040300.Задачи/image80.png\n\n"
+        "sign: Рисунок 39 – Описание изображения\n"
+        ":\n"
+    )
+    assert markdown_output == expected_markdown
