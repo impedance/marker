@@ -7,7 +7,6 @@ from core.model.internal_doc import (
     Inline,
 )
 
-
 def _render_inline(inline: Inline) -> str:
     """Renders a single inline element to its Markdown representation."""
     type = inline.type
@@ -21,11 +20,25 @@ def _render_inline(inline: Inline) -> str:
         return f"[{inline.content}]({inline.href})"
     raise ValueError(f"Unknown inline type: {type}")
 
+def _clean_heading_text(text: str) -> str:
+    """Remove leading numbering like '1', '1.2', '1.2.3', optional dots/brackets/dashes.
+
+    Examples:
+    - "3.7 Настройка" -> "Настройка"
+    - "3.4.3 — Функции" -> "Функции"
+    - "1) Введение" -> "Введение"
+    - "(2.1) - Описание" -> "Описание"
+    """
+    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+)\.?\)?\s*(?:[-–—]\s*)?"
+    return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
 def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
     """Renders a single block element to its Markdown representation."""
     type = block.type
     if type == "heading":
-        return f"{'#' * block.level} {block.text}"
+        adjusted_level = max(1, block.level - 1)
+        clean_text = _clean_heading_text(block.text)
+        return f"{'#' * adjusted_level} {clean_text}"
     if type == "paragraph":
         text = "".join(_render_inline(inline) for inline in block.inlines)
         stripped = text.lstrip()
@@ -83,7 +96,6 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str], document_name: 
     """
     markdown_lines = []
     prev_list = False
-    
     for block in doc.blocks:
         rendered = _render_block(block, asset_map, document_name)
         is_list = rendered.lstrip().startswith("- ")

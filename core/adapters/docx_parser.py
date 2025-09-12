@@ -50,6 +50,18 @@ DEFAULT_HEADING_PATTERNS = [
 def _read(z: zipfile.ZipFile, name: str) -> bytes | None:
     return z.read(name) if name in z.namelist() else None
 
+def _clean_heading_text(text: str) -> str:
+    """Remove numbering prefixes like '1', '1.2', '1.2.3', optional dots/brackets/dashes.
+
+    Examples:
+    - "3.7 Настройка" -> "Настройка"
+    - "3.4.3 — Функции" -> "Функции"
+    - "1) Введение" -> "Введение"
+    - "(2.1) - Описание" -> "Описание"
+    """
+    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+)\.?\)?\s*(?:[-–—]\s*)?"
+    return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
 def _styles_map(styles_xml: bytes | None) -> Dict[str, str]:
     """Map styleId -> human-readable name from styles.xml."""
     if not styles_xml: return {}
@@ -563,11 +575,14 @@ def split_docx_by_h1(
             # Start new chapter
             if current["lines"]:
                 sections.append(current)
-            current = {"title": t, "lines": [f"# {t}\n"]}
+            clean_t = _clean_heading_text(t)
+            current = {"title": clean_t, "lines": [f"# {clean_t}\n"]}
         else:
             if t:
                 if lvl:
-                    current["lines"].append(f"{'#'*lvl} {t}\n")
+                    new_lvl = max(1, lvl - 1)
+                    clean_t = _clean_heading_text(t)
+                    current["lines"].append(f"{'#'*new_lvl} {clean_t}\n")
                 else:
                     current["lines"].append(t + "\n")
 
