@@ -117,22 +117,89 @@ def test_render_shebang_code_block():
 
 
 def test_render_image_with_sign_format():
-    """Tests that images are rendered in the new sign-image format with document name and caption."""
+    """Tests that images are rendered in the new sign-image format with proper structure."""
     # Arrange
     doc = InternalDoc(blocks=[
-        Image(resource_id="img_1", alt="Image image80", caption="Рисунок 39 – Описание изображения"),
+        Image(resource_id="img_1", alt="Image 1", caption="Рисунок 1 – Описание изображения"),
     ])
-    asset_map = {"img_1": "/images/test-document/040300.Задачи/image80.png"}
-    document_name = "test-document"
+    asset_map = {"img_1": "original.png"}
     
     # Act
-    markdown_output = render_markdown(doc, asset_map, document_name)
+    markdown_output = render_markdown(doc, asset_map)
     
     # Assert
     expected_markdown = (
         "::sign-image\n"
-        "src: /images/test-document/040300.Задачи/image80.png\n\n"
-        "sign: Рисунок 39 – Описание изображения\n"
-        ":\n"
+        "---\n"
+        "src: /img_1.png\n"
+        "sign: Рисунок 1 – Описание изображения\n"
+        "---\n"
+        "::"
     )
     assert markdown_output == expected_markdown
+
+
+def test_render_image_without_caption():
+    """Tests that images without captions use traditional format."""
+    # Arrange
+    doc = InternalDoc(blocks=[
+        Image(resource_id="img_1", alt="Image without caption"),
+    ])
+    asset_map = {"img_1": "image1.png"}
+    
+    # Act
+    markdown_output = render_markdown(doc, asset_map)
+    
+    # Assert
+    expected_markdown = "![Image without caption](image1.png)"
+    assert markdown_output == expected_markdown
+
+
+def test_render_multiple_images_with_numbering():
+    """Tests that multiple images use their resource_id for paths."""
+    # Arrange
+    doc = InternalDoc(blocks=[
+        Image(resource_id="img_1", alt="Image 1", caption="Рисунок 1 – Первое изображение"),
+        Paragraph(inlines=[Text(content="Some text between images")]),
+        Image(resource_id="img_2", alt="Image 2", caption="Рисунок 2 – Второе изображение"),
+    ])
+    asset_map = {"img_1": "original1.png", "img_2": "original2.png"}
+    
+    # Act
+    markdown_output = render_markdown(doc, asset_map)
+    
+    # Assert - should use resource_id for paths
+    assert "src: /img_1.png" in markdown_output
+    assert "src: /img_2.png" in markdown_output
+    assert "sign: Рисунок 1 – Первое изображение" in markdown_output
+    assert "sign: Рисунок 2 – Второе изображение" in markdown_output
+
+
+
+
+def test_render_images_use_resource_id_for_paths():
+    """Tests that image paths use resource_id instead of extracted numbers from captions."""
+    # Arrange - simulate real DOCX structure where resource_id comes from original filename
+    doc = InternalDoc(blocks=[
+        Image(resource_id="image2", alt="First image", caption="Рисунок 1 – Описание первого изображения"),
+        Image(resource_id="image15", alt="Second image", caption="Рисунок 2 – Описание второго изображения"),
+        Image(resource_id="image7", alt="Third image", caption="Схема работы системы"),  # No number in caption
+    ])
+    asset_map = {
+        "image2": "images/chapter1/image2.png", 
+        "image15": "images/chapter2/image15.png",
+        "image7": "images/chapter1/image7.png"
+    }
+    
+    # Act
+    markdown_output = render_markdown(doc, asset_map)
+    
+    # Assert - paths should use resource_id, not numbers from captions
+    assert "src: /image2.png" in markdown_output
+    assert "src: /image15.png" in markdown_output  
+    assert "src: /image7.png" in markdown_output
+    
+    # Captions should be preserved as-is
+    assert "sign: Рисунок 1 – Описание первого изображения" in markdown_output
+    assert "sign: Рисунок 2 – Описание второго изображения" in markdown_output
+    assert "sign: Схема работы системы" in markdown_output
