@@ -23,8 +23,10 @@ from core.model.internal_doc import (
     Heading,
     Paragraph,
     Text as InlineText,
-    Inline,
     Image,
+    Table,
+    TableRow,
+    TableCell,
 )
 from core.model.resource_ref import ResourceRef
 
@@ -361,6 +363,30 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
     
     return images
 
+def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef]) -> Table:
+    """Convert a DOCX table element into a Table block."""
+    rows = tbl.findall('w:tr', NS)
+    if not rows:
+        return Table(header=TableRow(cells=[]), rows=[])
+
+    def _row(tr: ET.Element) -> TableRow:
+        cells: List[TableCell] = []
+        for tc in tr.findall('w:tc', NS):
+            blocks: List[Block] = []
+            for p in tc.findall('w:p', NS):
+                images = _find_images_in_paragraph(p, relationships, media_images)
+                for img in images:
+                    blocks.append(img)
+                text = _text_of(p)
+                if text:
+                    blocks.append(Paragraph(inlines=[InlineText(content=text)]))
+            cells.append(TableCell(blocks=blocks))
+        return TableRow(cells=cells)
+
+    header = _row(rows[0])
+    body = [_row(r) for r in rows[1:]]
+    return Table(header=header, rows=body)
+
 def split_docx_by_h1(
     docx_path: str | Path,
     out_dir: str | Path,
@@ -467,42 +493,36 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     blocks: List[Block] = []
     resources: List[ResourceRef] = list(media_images.values())  # Extract all images as resources
     heading_iter = iter(numbered_headings)
-    
-    for p in body.findall("w:p", NS):
-        lvl = _heading_level(p, styles_map, patterns)
-        text = _text_of(p)  # Get basic text first
-        list_type = _paragraph_list_type(p, style_nums, num_fmts)
-        
-        # Check for images in this paragraph
-        paragraph_images = _find_images_in_paragraph(p, relationships, media_images)
-        
-        # Add images as separate blocks
-        for image in paragraph_images:
-            blocks.append(image)
-        
-        if text:  # Only process non-empty paragraphs
-            if lvl:
-                # For headings, try to get numbered text from extracted headings
-                try:
-                    numbered_heading = next(heading_iter)
-                    # Use the numbered text with proper formatting and correct level
-                    numbered_text = f"{numbered_heading.number} {numbered_heading.text}"
-                    # Cap heading level at 6 to comply with Heading model validation
-                    level = min(numbered_heading.level + 1, 6)
-                    blocks.append(Heading(level=level, text=numbered_text))
-                except StopIteration:
-                    # Fallback if we run out of numbered headings
-                    # Cap heading level at 6 to comply with Heading model validation
-                    level = min(lvl, 6)
-                    blocks.append(Heading(level=level, text=text))
-            else:
-                if list_type:
-                    text = f"- {text}"
-                inlines = [InlineText(content=text)]
-                blocks.append(Paragraph(inlines=inlines))
-        elif paragraph_images:
-            # If paragraph has no text but has images, we've already added the images above
-            pass
+
+    for el in list(body):
+        if el.tag == f"{{{NS['w']}}}p":
+            p = el
+            lvl = _heading_level(p, styles_map, patterns)
+            text = _text_of(p)
+            list_type = _paragraph_list_type(p, style_nums, num_fmts)
+            paragraph_images = _find_images_in_paragraph(p, relationships, media_images)
+            for image in paragraph_images:
+                blocks.append(image)
+            if text:
+                if lvl:
+                    try:
+                        numbered_heading = next(heading_iter)
+                        numbered_text = f"{numbered_heading.number} {numbered_heading.text}"
+                        level = min(numbered_heading.level + 1, 6)
+                        blocks.append(Heading(level=level, text=numbered_text))
+                    except StopIteration:
+                        level = min(lvl, 6)
+                        blocks.append(Heading(level=level, text=text))
+                else:
+                    if list_type:
+                        text = f"- {text}"
+                    inlines = [InlineText(content=text)]
+                    blocks.append(Paragraph(inlines=inlines))
+            elif paragraph_images:
+                pass
+        elif el.tag == f"{{{NS['w']}}}tbl":
+            table_block = _parse_table(el, relationships, media_images)
+            blocks.append(table_block)
     
     internal_doc = InternalDoc(blocks=blocks)
     return internal_doc, resources
