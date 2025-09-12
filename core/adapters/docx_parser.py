@@ -784,13 +784,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                 pass
             prev_text = text
         elif el.tag == f"{{{NS['w']}}}tbl":
-<<<<<<< HEAD
             # If a code block was open before a table, flush it
             flush_code()
-            table_block = _parse_table(el, relationships, media_images)
-=======
             table_block = _parse_table(el, relationships, media_images, all_paragraphs, styles_map)
->>>>>>> 2ce4b02 (add pics)
             blocks.append(table_block)
     # Flush any pending code block at the end
     flush_code()
