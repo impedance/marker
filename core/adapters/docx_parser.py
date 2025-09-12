@@ -22,6 +22,7 @@ from core.model.internal_doc import (
     Block,
     Heading,
     Paragraph,
+    CodeBlock,
     Text as InlineText,
     Image,
     Table,
@@ -494,6 +495,101 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     resources: List[ResourceRef] = list(media_images.values())  # Extract all images as resources
     heading_iter = iter(numbered_headings)
 
+    # --- Heuristics for code block detection ---
+    yaml_key_re = re.compile(r"^(?:-\s+.*|\s*[\w\./\[\]-]+\s*:\s*.*)$")
+    yaml_start_hint_re = re.compile(r"\.(ya?ml)\b", re.IGNORECASE)
+    yaml_first_line_re = re.compile(r"^(version|services|tls)\s*:\s*|^-\s+", re.IGNORECASE)
+
+    bash_line_re = re.compile(r"^(?:sudo\s+)?(docker|wget|curl|psql|createdb|apt|apt-get|dnf|systemctl|sh\b|touch|chmod|chown|echo|ls|cat|kubectl|helm)\b")
+    sql_line_re = re.compile(r"^(CREATE|GRANT|ALTER|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b", re.IGNORECASE)
+
+    code_acc: List[str] = []
+    code_lang: str | None = None
+    code_title: str | None = None
+
+    def flush_code():
+        nonlocal code_acc, code_lang, code_title
+        if code_acc:
+            blocks.append(CodeBlock(code="\n".join(code_acc), language=code_lang, title=code_title))
+        code_acc = []
+        code_lang = None
+        code_title = None
+
+    def belongs_to_yaml(line: str) -> bool:
+        return bool(yaml_key_re.match(line))
+
+    def belongs_to_bash(line: str) -> bool:
+        return bool(bash_line_re.match(line))
+
+    def belongs_to_sql(line: str) -> bool:
+        return bool(sql_line_re.match(line))
+
+    # Code-style detection via paragraph style name, shading and monospaced fonts
+    CODE_STYLE_NAME_PATTERNS = [
+        r".*Команда.*",
+        r".*Листинг.*",
+        r".*Code.*",
+        r".*Код.*",
+        r"ROSA_ТКом",
+        r"ROSA_Команда_Таблица",
+    ]
+    code_style_name_res = [re.compile(pat, re.IGNORECASE) for pat in CODE_STYLE_NAME_PATTERNS]
+
+    MONO_FONTS = {"courier new", "consolas", "roboto mono", "menlo", "monaco", "lucida console"}
+
+    def _para_style_name(p: ET.Element) -> str:
+        pPr = p.find("w:pPr", NS)
+        if pPr is None:
+            return ""
+        pStyle = pPr.find("w:pStyle", NS)
+        if pStyle is None:
+            return ""
+        sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
+        return styles_map.get(sid, sid) or sid
+
+    def _has_gray_shading(p: ET.Element) -> bool:
+        def has_shading(el: ET.Element | None) -> bool:
+            if el is None:
+                return False
+            shd = el.find("w:shd", NS)
+            if shd is None:
+                return False
+            fill = shd.attrib.get(f"{{{NS['w']}}}fill", "").lower()
+            # D9D9D9 или любой серый оттенок
+            return fill in {"d9d9d9", "e1dfdd", "ededed", "f2f2f2"} or bool(fill)
+
+        pPr = p.find("w:pPr", NS)
+        rPr = p.find("w:r/w:rPr", NS)
+        return has_shading(pPr) or has_shading(rPr)
+
+    def _uses_mono_font(p: ET.Element) -> bool:
+        for r in p.findall(".//w:r", NS):
+            rPr = r.find("w:rPr", NS)
+            if rPr is None:
+                continue
+            rFonts = rPr.find("w:rFonts", NS)
+            if rFonts is None:
+                continue
+            for attr in ("ascii", "hAnsi", "cs"):
+                val = rFonts.attrib.get(f"{{{NS['w']}}}{attr}", "").lower()
+                if val in MONO_FONTS:
+                    return True
+        return False
+
+    def is_code_style_paragraph(p: ET.Element) -> bool:
+        name = _para_style_name(p)
+        if name and any(rx.match(name) for rx in code_style_name_res):
+            return True
+        if _has_gray_shading(p) and _uses_mono_font(p):
+            return True
+        return False
+
+    def _clean_bash_prefix(line: str) -> str:
+        """Remove leading '# ' used in doc formatting before commands."""
+        m = re.match(r"^\s*#\s+(.*)$", line)
+        return m.group(1) if m else line
+
+    prev_text: str = ""
     for el in list(body):
         if el.tag == f"{{{NS['w']}}}p":
             p = el
@@ -504,6 +600,49 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
             for image in paragraph_images:
                 blocks.append(image)
             if text:
+                # Style-based code detection (highest priority)
+                if is_code_style_paragraph(p):
+                    # Start or continue a code block; guess language from content
+                    if code_lang is None:
+                        if text.strip().startswith("#!/") or belongs_to_bash(text):
+                            code_lang = "bash"
+                            code_title = "Terminal"
+                        elif belongs_to_yaml(text):
+                            code_lang = "yaml"
+                            code_title = None
+                        elif belongs_to_sql(text):
+                            code_lang = "sql"
+                            code_title = None
+                        else:
+                            code_lang = "bash"  # default for command listings
+                            code_title = "Terminal"
+                    code_acc.append((_clean_bash_prefix(text)).strip())
+                    prev_text = text
+                    continue
+
+                # If we are inside a code block, try to continue it
+                if code_lang == "yaml":
+                    if belongs_to_yaml(text):
+                        code_acc.append(text.strip())
+                        prev_text = text
+                        continue
+                    else:
+                        flush_code()
+                elif code_lang == "bash":
+                    if belongs_to_bash(text):
+                        code_acc.append((_clean_bash_prefix(text)).strip())
+                        prev_text = text
+                        continue
+                    else:
+                        flush_code()
+                elif code_lang == "sql":
+                    if belongs_to_sql(text) or text.strip().endswith(";"):
+                        code_acc.append(text.strip())
+                        prev_text = text
+                        continue
+                    else:
+                        flush_code()
+
                 if lvl:
                     try:
                         numbered_heading = next(heading_iter)
@@ -517,16 +656,51 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                         level = min(lvl, 6)
                         blocks.append(Heading(level=level, text=text))
                 else:
+                    # Decide if a new code block should start
+                    started_code = False
+                    # YAML detection: hint in previous line about *.yml/.yaml or typical first YAML keys
+                    if yaml_start_hint_re.search(prev_text) and yaml_first_line_re.search(text):
+                        code_lang = "yaml"
+                        m = re.search(r"([\w\./-]+\.(?:ya?ml))", prev_text, flags=re.IGNORECASE)
+                        code_title = m.group(1) if m else None
+                        code_acc.append(text.strip())
+                        started_code = True
+                    elif yaml_first_line_re.search(text) and belongs_to_yaml(text):
+                        code_lang = "yaml"
+                        code_title = None
+                        code_acc.append(text.strip())
+                        started_code = True
+                    # Bash detection
+                    elif belongs_to_bash(text):
+                        code_lang = "bash"
+                        code_title = "Terminal"
+                        code_acc.append((_clean_bash_prefix(text)).strip())
+                        started_code = True
+                    # SQL detection
+                    elif belongs_to_sql(text):
+                        code_lang = "sql"
+                        code_title = None
+                        code_acc.append(text.strip())
+                        started_code = True
+
+                    if started_code:
+                        prev_text = text
+                        continue
+
                     if list_type:
                         text = f"- {text}"
                     inlines = [InlineText(content=text)]
                     blocks.append(Paragraph(inlines=inlines))
             elif paragraph_images:
                 pass
+            prev_text = text
         elif el.tag == f"{{{NS['w']}}}tbl":
+            # If a code block was open before a table, flush it
+            flush_code()
             table_block = _parse_table(el, relationships, media_images)
             blocks.append(table_block)
-    
+    # Flush any pending code block at the end
+    flush_code()
     internal_doc = InternalDoc(blocks=blocks)
     return internal_doc, resources
 
