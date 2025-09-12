@@ -29,7 +29,18 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
         return f"![{block.alt}]({path})"
-    # Other block types (List, Table) would be handled here.
+    if type == "table":
+        def _row(r) -> str:
+            cells = []
+            for cell in r.cells:
+                cell_parts = [_render_block(b, asset_map) for b in cell.blocks]
+                cells.append(" ".join(cell_parts).strip())
+            return "| " + " | ".join(cells) + " |"
+
+        header = _row(block.header)
+        sep = "| " + " | ".join(["---"] * len(block.header.cells)) + " |"
+        rows = [_row(r) for r in block.rows]
+        return "\n".join([header, sep, *rows])
     raise ValueError(f"Unknown block type: {type}")
 
 def render_markdown(doc: InternalDoc, asset_map: Dict[str, str]) -> str:
