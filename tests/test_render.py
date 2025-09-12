@@ -78,3 +78,13 @@ def test_render_bash_command():
     markdown_output = render_markdown(doc, {})
     expected = "```bash\nmkdir -p /var/www/html/media\n```"
     assert markdown_output == expected
+
+
+def test_render_bash_command_in_list():
+    """Shell command prefixed by a list marker becomes a code block."""
+    doc = InternalDoc(
+        blocks=[Paragraph(inlines=[Text(content="- # dnf install -y rosa-release-postgres-16")])]
+    )
+    markdown_output = render_markdown(doc, {})
+    expected = "```bash\ndnf install -y rosa-release-postgres-16\n```"
+    assert markdown_output == expected

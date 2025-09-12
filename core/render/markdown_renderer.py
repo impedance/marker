@@ -1,3 +1,4 @@
+import re
 from typing import Dict
 
 from core.model.internal_doc import (
@@ -27,8 +28,9 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
     if type == "paragraph":
         text = "".join(_render_inline(inline) for inline in block.inlines)
         stripped = text.lstrip()
-        if stripped.startswith("# "):
-            command = stripped[1:].lstrip()
+        match = re.match(r"(?:[-*]\s+|\d+[.)]\s+)?#\s+(.*)", stripped)
+        if match:
+            command = match.group(1)
             return f"```bash\n{command}\n```"
         return text
     if type == "image":
