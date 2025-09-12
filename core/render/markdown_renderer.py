@@ -20,7 +20,7 @@ def _render_inline(inline: Inline) -> str:
         return f"[{inline.content}]({inline.href})"
     raise ValueError(f"Unknown inline type: {type}")
 
-def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
+def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
     """Renders a single block element to its Markdown representation."""
     type = block.type
     if type == "heading":
@@ -35,6 +35,13 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
         return text
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
+        if block.caption:
+            # Ensure path starts with / but avoid double slashes
+            normalized_path = f"/{path}" if not path.startswith('/') else path
+            return (f"::sign-image\n"
+                   f"src: {normalized_path}\n\n"
+                   f"sign: {block.caption}\n"
+                   f":\n")
         return f"![{block.alt}]({path})"
     if type == "code":
         info = []
@@ -48,7 +55,7 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
         def _row(r) -> str:
             cells = []
             for cell in r.cells:
-                cell_parts = [_render_block(b, asset_map) for b in cell.blocks]
+                cell_parts = [_render_block(b, asset_map, document_name) for b in cell.blocks]
                 cells.append(" ".join(cell_parts).strip())
             return "| " + " | ".join(cells) + " |"
 
@@ -58,7 +65,7 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
         return "\n".join([header, sep, *rows])
     raise ValueError(f"Unknown block type: {type}")
 
-def render_markdown(doc: InternalDoc, asset_map: Dict[str, str]) -> str:
+def render_markdown(doc: InternalDoc, asset_map: Dict[str, str], document_name: str = "") -> str:
     """
 
     Renders an InternalDoc object into a Markdown string.
@@ -66,6 +73,7 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str]) -> str:
     Args:
         doc: The InternalDoc object to render.
         asset_map: A dictionary mapping resource IDs to their file paths.
+        document_name: The document name for image path generation.
 
     Returns:
         A string containing the rendered Markdown document.
@@ -73,7 +81,7 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str]) -> str:
     markdown_lines = []
     prev_list = False
     for block in doc.blocks:
-        rendered = _render_block(block, asset_map)
+        rendered = _render_block(block, asset_map, document_name)
         is_list = rendered.lstrip().startswith("- ")
         if is_list:
             if not prev_list and markdown_lines:

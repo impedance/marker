@@ -97,7 +97,7 @@ class DocumentPipeline:
                 chapter_path = chapters_dir / filename
                 
                 # Render markdown
-                markdown_content = render_markdown(chapter, asset_map)
+                markdown_content = render_markdown(chapter, asset_map, input_basename)
                 
                 # Write chapter file
                 self.writer.write_text(chapter_path, markdown_content)

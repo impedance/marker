@@ -341,8 +341,9 @@ def _get_mime_type_from_extension(ext: str) -> str:
     }
     return mime_types.get(ext, 'application/octet-stream')
 
-def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef]) -> List[Image]:
-    """Find all images referenced in a paragraph and return Image blocks."""
+def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
+                             all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> List[Image]:
+    """Find all images referenced in a paragraph and return Image blocks with captions."""
     images = []
     
     # Look for drawing elements that contain image references
@@ -355,16 +356,101 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
                 
                 if full_path in media_images:
                     resource_ref = media_images[full_path]
+                    
+                    # Find caption for this image
+                    caption = _find_caption_for_image(p, all_paragraphs, styles_map)
+                    
                     # Create Image block
                     image = Image(
                         alt=f"Image {resource_ref.id}",  # Simple alt text
-                        resource_id=resource_ref.id
+                        resource_id=resource_ref.id,
+                        caption=caption
                     )
                     images.append(image)
     
     return images
 
-def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef]) -> Table:
+
+def _is_caption_paragraph(p: ET.Element, styles_map: Dict[str, str]) -> bool:
+    """Check if paragraph contains an image caption."""
+    # Strategy 1: Check style names
+    style_id = ""
+    pPr = p.find("w:pPr", NS)
+    if pPr is not None:
+        pStyle = pPr.find("w:pStyle", NS)
+        if pStyle is not None:
+            style_id = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
+    
+    style_name = styles_map.get(style_id, "").lower()
+    
+    # Known caption style patterns
+    caption_style_patterns = [
+        r'caption', r'рисунок.*номер', r'рисунок.*подпись', r'figure'
+    ]
+    
+    for pattern in caption_style_patterns:
+        if re.search(pattern, style_name, re.IGNORECASE):
+            return True
+    
+    # Strategy 2: Check text content patterns
+    text_content = _extract_text_from_paragraph(p).strip()
+    if text_content:
+        caption_text_patterns = [
+            r'(рисунок|figure|рис\.|fig\.)\s+\d+',
+            r'(схема|diagram|диаграмма)\s+\d+',
+            r'^рисунок\s+\d+\s*[-–—]\s*.+',
+            r'^figure\s+\d+\s*[-–—]\s*.+'
+        ]
+        
+        for pattern in caption_text_patterns:
+            if re.search(pattern, text_content, re.IGNORECASE):
+                return True
+    
+    return False
+
+
+def _extract_text_from_paragraph(p: ET.Element) -> str:
+    """Extract all text content from a paragraph element."""
+    texts = []
+    for t in p.findall('.//w:t', NS):
+        if t.text:
+            texts.append(t.text)
+    return "".join(texts)
+
+
+def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> str:
+    """Find caption text for an image paragraph by looking at following paragraphs."""
+    try:
+        img_index = all_paragraphs.index(image_para)
+        
+        # Check next 3 paragraphs for caption
+        for offset in range(1, 4):
+            next_index = img_index + offset
+            if next_index < len(all_paragraphs):
+                next_para = all_paragraphs[next_index]
+                
+                if _is_caption_paragraph(next_para, styles_map):
+                    caption_text = _extract_text_from_paragraph(next_para).strip()
+                    if caption_text:
+                        return caption_text
+                        
+                # If we encounter another image, stop looking
+                if next_para.findall('.//w:drawing', NS):
+                    break
+                    
+                # If paragraph has significant content but isn't a caption, stop
+                text = _extract_text_from_paragraph(next_para).strip()
+                if len(text) > 50 and not _is_caption_paragraph(next_para, styles_map):
+                    break
+    
+    except ValueError:
+        # image_para not found in all_paragraphs
+        pass
+    
+    return ""
+
+def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
+                all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> Table:
     """Convert a DOCX table element into a Table block."""
     rows = tbl.findall('w:tr', NS)
     if not rows:
@@ -375,7 +461,7 @@ def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: D
         for tc in tr.findall('w:tc', NS):
             blocks: List[Block] = []
             for p in tc.findall('w:p', NS):
-                images = _find_images_in_paragraph(p, relationships, media_images)
+                images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, styles_map)
                 for img in images:
                     blocks.append(img)
                 text = _text_of(p)
@@ -494,6 +580,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     blocks: List[Block] = []
     resources: List[ResourceRef] = list(media_images.values())  # Extract all images as resources
     heading_iter = iter(numbered_headings)
+    
+    # Get all paragraphs for caption detection
+    all_paragraphs = body.findall(".//w:p", NS)
 
     # --- Heuristics for code block detection ---
     yaml_key_re = re.compile(r"^(?:-\s+.*|\s*[\w\./\[\]-]+\s*:\s*.*)$")
@@ -596,7 +685,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
             lvl = _heading_level(p, styles_map, patterns)
             text = _text_of(p)
             list_type = _paragraph_list_type(p, style_nums, num_fmts)
-            paragraph_images = _find_images_in_paragraph(p, relationships, media_images)
+            paragraph_images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, styles_map)
             for image in paragraph_images:
                 blocks.append(image)
             if text:
@@ -695,9 +784,13 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                 pass
             prev_text = text
         elif el.tag == f"{{{NS['w']}}}tbl":
+<<<<<<< HEAD
             # If a code block was open before a table, flush it
             flush_code()
             table_block = _parse_table(el, relationships, media_images)
+=======
+            table_block = _parse_table(el, relationships, media_images, all_paragraphs, styles_map)
+>>>>>>> 2ce4b02 (add pics)
             blocks.append(table_block)
     # Flush any pending code block at the end
     flush_code()

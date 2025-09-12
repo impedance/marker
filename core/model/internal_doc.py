@@ -45,6 +45,7 @@ class Image(BaseModel):
     type: Literal["image"] = "image"
     alt: str = ""
     resource_id: str  # Corresponds to a ResourceRef
+    caption: str = ""  # Image caption extracted from docx
 
 
 class CodeBlock(BaseModel):
