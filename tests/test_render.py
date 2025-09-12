@@ -70,3 +70,21 @@ def test_render_markdown():
         "![An example image](assets/img_1.png)"
     )
     assert markdown_output == expected_markdown
+
+
+def test_render_bash_command():
+    """Ensures shell commands are wrapped in bash code blocks."""
+    doc = InternalDoc(blocks=[Paragraph(inlines=[Text(content="# mkdir -p /var/www/html/media")])])
+    markdown_output = render_markdown(doc, {})
+    expected = "```bash\nmkdir -p /var/www/html/media\n```"
+    assert markdown_output == expected
+
+
+def test_render_bash_command_in_list():
+    """Shell command prefixed by a list marker becomes a code block."""
+    doc = InternalDoc(
+        blocks=[Paragraph(inlines=[Text(content="- # dnf install -y rosa-release-postgres-16")])]
+    )
+    markdown_output = render_markdown(doc, {})
+    expected = "```bash\ndnf install -y rosa-release-postgres-16\n```"
+    assert markdown_output == expected
