@@ -9,7 +9,7 @@ def test_parse_with_real_docx():
     """
     # Arrange: Path to a real sample file
     # Using a known file from the project structure
-    sample_filepath = Path("/home/spec/work/rosa/docling/real-docs/cu-admin-install.docx")
+    sample_filepath = Path("real-docs/dev-portal-user.docx")
 
     # Act: Run the adapter
     doc, resources = parse_document(str(sample_filepath))

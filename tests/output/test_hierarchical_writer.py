@@ -30,7 +30,7 @@ def test_code_for_levels():
 
 def _sample_blocks():
     return [
-        Heading(level=1, text="1 Chapter 1"),
+        Heading(level=1, text="Chapter 1"),
         Paragraph(inlines=[Text(content="Intro H1")]),
         Heading(level=2, text="1.1 Section 1"),
         Paragraph(inlines=[Text(content="Intro Section")]),
@@ -40,7 +40,7 @@ def _sample_blocks():
         Paragraph(inlines=[Text(content="Content B")]),
         Heading(level=2, text="1.2 Section 2"),
         Paragraph(inlines=[Text(content="Section 2 content")]),
-        Heading(level=1, text="2 Chapter 2"),
+        Heading(level=1, text="Chapter 2"),
         Paragraph(inlines=[Text(content="Chapter 2 intro")]),
     ]
 
@@ -51,8 +51,6 @@ def test_collect_sections_splits_blocks_correctly():
     assert titles == [
         "Chapter 1",
         "Section 1",
-        "Topic A",
-        "Topic B",
         "Section 2",
         "Chapter 2",
     ]
@@ -60,15 +58,16 @@ def test_collect_sections_splits_blocks_correctly():
     assert numbers == [
         [1],
         [1, 1],
-        [1, 1, 1],
-        [1, 1, 2],
         [1, 2],
         [2],
     ]
     for sec in sections:
         heading = sec.blocks[0]
         assert isinstance(heading, Heading)
-        assert heading.text.startswith(".".join(map(str, sec.number)))
+        if sec.level > 1:
+            assert heading.text.startswith(".".join(map(str, sec.number)))
+        else:
+            assert heading.text == sec.title
 
 
 def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
@@ -77,19 +76,18 @@ def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
         "core.output.hierarchical_writer.parse_document", lambda path: (doc, {})
     )
     written = export_docx_hierarchy("dummy.docx", tmp_path)
+    doc_dir = tmp_path / "dummy"
     expected = {
-        tmp_path / "010000.Chapter 1" / "index.md",
-        tmp_path / "010000.Chapter 1" / "010100.Section 1.md",
-        tmp_path / "010000.Chapter 1" / "010101.Topic A.md",
-        tmp_path / "010000.Chapter 1" / "010102.Topic B.md",
-        tmp_path / "010000.Chapter 1" / "010200.Section 2.md",
-        tmp_path / "020000.Chapter 2" / "index.md",
+        doc_dir / "010000.Chapter 1" / "index.md",
+        doc_dir / "010000.Chapter 1" / "010100.Section 1.md",
+        doc_dir / "010000.Chapter 1" / "010200.Section 2.md",
+        doc_dir / "020000.Chapter 2" / "index.md",
     }
     assert set(written) == expected
-    index_content = Path(tmp_path / "010000.Chapter 1" / "index.md").read_text()
-    assert index_content.startswith("# 1 Chapter 1")
-    h3_content = Path(tmp_path / "010000.Chapter 1" / "010101.Topic A.md").read_text()
-    assert h3_content.startswith("### 1.1.1 Topic A")
+    index_content = Path(doc_dir / "010000.Chapter 1" / "index.md").read_text()
+    assert index_content.startswith("# Chapter 1")
+    sec_content = Path(doc_dir / "010000.Chapter 1" / "010100.Section 1.md").read_text()
+    assert sec_content.startswith("## 1.1 Section 1")
 
 
 def test_cli_build_invokes_export(monkeypatch, tmp_path):

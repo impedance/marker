@@ -4,8 +4,14 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from core.model.config import PipelineConfig
 from core.pipeline import DocumentPipeline
+
+DOCX_PATH = Path("real-docs/dev-portal-user.docx")
+if not DOCX_PATH.exists():
+    pytest.skip("DOCX test file missing", allow_module_level=True)
 
 
 class TestDocumentPipelineIntegration:
@@ -14,8 +20,7 @@ class TestDocumentPipelineIntegration:
     def test_pipeline_processes_docx_file(self):
         """Test that the pipeline can process a real DOCX file end-to-end."""
         # Arrange
-        input_file = Path("/home/spec/work/rosa/docling/docx-s/cu-admin-install.docx")
-        assert input_file.exists(), "Test DOCX file should exist"
+        input_file = DOCX_PATH
         
         config = PipelineConfig()
         pipeline = DocumentPipeline(config)
@@ -47,7 +52,7 @@ class TestDocumentPipelineIntegration:
     def test_pipeline_generates_valid_index_md(self):
         """Test that the generated index.md has valid content."""
         # Arrange
-        input_file = Path("/home/spec/work/rosa/docling/docx-s/cu-admin-install.docx")
+        input_file = DOCX_PATH
         config = PipelineConfig()
         pipeline = DocumentPipeline(config)
         
@@ -67,7 +72,7 @@ class TestDocumentPipelineIntegration:
     def test_pipeline_generates_valid_manifest_json(self):
         """Test that the generated manifest.json is valid JSON with expected structure."""
         # Arrange
-        input_file = Path("/home/spec/work/rosa/docling/docx-s/cu-admin-install.docx")
+        input_file = DOCX_PATH
         config = PipelineConfig()
         pipeline = DocumentPipeline(config)
         
@@ -96,7 +101,7 @@ class TestDocumentPipelineIntegration:
     def test_pipeline_with_custom_config(self):
         """Test that the pipeline respects custom configuration."""
         # Arrange
-        input_file = Path("/home/spec/work/rosa/docling/docx-s/cu-admin-install.docx")
+        input_file = DOCX_PATH
         config = PipelineConfig(
             split_level=1,
             assets_dir="custom_assets",
@@ -114,7 +119,7 @@ class TestDocumentPipelineIntegration:
             
             # Check that custom assets directory is used
             temp_path = Path(temp_dir)
-            doc_dir = temp_path / "cu-admin-install"
+            doc_dir = temp_path / DOCX_PATH.stem
             custom_assets_dir = doc_dir / "custom_assets"
             assert custom_assets_dir.exists(), "Custom assets directory should be created"
             
@@ -143,7 +148,7 @@ class TestDocumentPipelineIntegration:
     def test_pipeline_creates_directory_structure(self):
         """Test that the pipeline creates the expected directory structure."""
         # Arrange
-        input_file = Path("/home/spec/work/rosa/docling/docx-s/cu-admin-install.docx")
+        input_file = DOCX_PATH
         config = PipelineConfig()
         pipeline = DocumentPipeline(config)
         
@@ -155,7 +160,7 @@ class TestDocumentPipelineIntegration:
             assert result.success
             
             temp_path = Path(temp_dir)
-            doc_dir = temp_path / "cu-admin-install"
+            doc_dir = temp_path / DOCX_PATH.stem
             chapters_dir = doc_dir / "chapters"
             assets_dir = doc_dir / "assets"
             

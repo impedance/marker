@@ -26,9 +26,11 @@ def apply_numbers_to_markdown(md_text: str, numbered: Iterable[NumberedHeading])
         try:
             h = next(it)
         except StopIteration:
-            # No more headings from DOCX — keep as-is
             out_lines.append(f"{hashes} {title_clean}")
             continue
 
-        out_lines.append(f"{hashes} {h.number} {title_clean}")
+        if h.level == 1:
+            out_lines.append(f"{hashes} {title_clean}")
+        else:
+            out_lines.append(f"{hashes} {h.number} {title_clean}")
     return "\n".join(out_lines) + "\n"
