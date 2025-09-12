@@ -103,9 +103,9 @@ class TestMdNumbering:
         result = apply_numbers_to_markdown(md_text, headings)
         
         lines = result.splitlines()
-        assert lines[0] == "# 1 Introduction"
+        assert lines[0] == "# Introduction"
         assert lines[1] == "## 1.1 Overview"
-        assert lines[2] == "# 2 Implementation"
+        assert lines[2] == "# Implementation"
         assert lines[3] == "## 2.1 Details"
     
     def test_apply_numbers_with_existing(self):
@@ -121,7 +121,7 @@ class TestMdNumbering:
         result = apply_numbers_to_markdown(md_text, headings)
         
         lines = result.splitlines()
-        assert lines[0] == "# 1 Old Number Introduction"  # Should include the cleaned text
+        assert lines[0] == "# Old Number Introduction"
         assert lines[1] == "## 1.1 Old Number Overview"
     
     def test_apply_numbers_insufficient_headings(self):
@@ -137,9 +137,9 @@ class TestMdNumbering:
         result = apply_numbers_to_markdown(md_text, headings)
         
         lines = result.splitlines()
-        assert lines[0] == "# 1 First"
-        assert lines[1] == "# Second"  # No number applied
-        assert lines[2] == "# Third"   # No number applied
+        assert lines[0] == "# First"
+        assert lines[1] == "# Second"
+        assert lines[2] == "# Third"
 
 
 class TestValidators:
@@ -179,18 +179,18 @@ class TestValidators:
     
     def test_validate_markdown_numbering_success(self):
         """Test successful markdown validation."""
-        md_text = """# 1 Introduction
+        md_text = """# Introduction
 ## 1.1 Overview
-# 2 Implementation"""
+# Implementation"""
         
         # Should not raise any exception
         validate_markdown_numbering(md_text)
     
     def test_validate_markdown_numbering_failure(self):
         """Test markdown validation failure."""
-        md_text = """# 1 Introduction
+        md_text = """# Introduction
 ## Overview
-# 2 Implementation"""  # Second heading missing number
+# Implementation"""  # Second heading missing number
         
         with pytest.raises(NumberingValidationError, match="missing numbering"):
             validate_markdown_numbering(md_text)
@@ -241,7 +241,7 @@ def test_integration_numbering_pipeline():
     
     # Apply to markdown
     mock_md = """# Общие сведения
-## Функциональное назначение  
+## Функциональное назначение
 # Архитектура комплекса
 ## Основные компоненты"""
     
@@ -251,8 +251,8 @@ def test_integration_numbering_pipeline():
     validate_markdown_numbering(numbered_md)
     
     # Test filename generation
-    filename1 = generate_chapter_filename(1, "1 Общие сведения")
-    filename2 = generate_chapter_filename(2, "2 Архитектура комплекса")
+    filename1 = generate_chapter_filename(1, "Общие сведения")
+    filename2 = generate_chapter_filename(2, "Архитектура комплекса")
     
     assert filename1 == "01-obshchie-svedeniia.md"
     assert filename2 == "02-arkhitektura-kompleksa.md"

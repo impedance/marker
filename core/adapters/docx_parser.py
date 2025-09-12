@@ -507,8 +507,11 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                 if lvl:
                     try:
                         numbered_heading = next(heading_iter)
-                        numbered_text = f"{numbered_heading.number} {numbered_heading.text}"
-                        level = min(numbered_heading.level + 1, 6)
+                        level = min(numbered_heading.level, 6)
+                        if level == 1:
+                            numbered_text = numbered_heading.text
+                        else:
+                            numbered_text = f"{numbered_heading.number} {numbered_heading.text}"
                         blocks.append(Heading(level=level, text=numbered_text))
                     except StopIteration:
                         level = min(lvl, 6)

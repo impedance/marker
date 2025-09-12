@@ -54,10 +54,7 @@ def _find_min_heading_level(blocks: list) -> int:
     min_level = float('inf')
     for blk in blocks:
         if getattr(blk, "type", None) == "heading":
-            text = blk.text or ""
-            nums, _ = _split_number_and_title(text)
-            if nums:  # Only consider numbered headings
-                min_level = min(min_level, blk.level)
+            min_level = min(min_level, blk.level)
     return int(min_level) if min_level != float('inf') else 1
 
 
@@ -66,8 +63,8 @@ def _collect_sections(blocks: list) -> List[_Section]:
     sections: List[_Section] = []
     cur_h1: Optional[_Section] = None
     cur_h2_intro: Optional[_Section] = None
+    h1_counter = 0
 
-    # Find the minimum heading level and normalize
     min_level = _find_min_heading_level(blocks)
 
     def flush_h2() -> None:
@@ -81,25 +78,27 @@ def _collect_sections(blocks: list) -> List[_Section]:
             text = blk.text or ""
             lvl = blk.level
             nums, ttl = _split_number_and_title(text)
-            # Normalize level to 1-based hierarchy
             normalized_lvl = lvl - min_level + 1
-            
-            if normalized_lvl == 1 and nums:
+
+            if normalized_lvl == 1:
                 flush_h2()
-                cur_h1 = _Section(normalized_lvl, [nums[0]], ttl, [blk])
+                if nums:
+                    number = [nums[0]]
+                    title = ttl
+                else:
+                    h1_counter += 1
+                    number = [h1_counter]
+                    title = text
+                cur_h1 = _Section(normalized_lvl, number, title, [blk])
                 sections.append(cur_h1)
                 continue
             if normalized_lvl == 2 and nums:
                 flush_h2()
-                # For level 2 sections, use the full numbering as provided
-                # Don't assume it must match the parent H1
                 if len(nums) >= 2:
                     cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk])
                 else:
-                    # Handle case where level 2 heading has only one number
                     cur_h2_intro = _Section(normalized_lvl, nums + [0], ttl, [blk])
                 continue
-            # H3 and deeper levels should be added to the current H2 section, not create separate files
             if normalized_lvl >= 3 and nums:
                 target = cur_h2_intro or cur_h1
                 if target:

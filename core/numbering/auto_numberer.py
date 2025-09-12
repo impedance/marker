@@ -56,27 +56,25 @@ def add_automatic_numbering(doc: InternalDoc) -> InternalDoc:
     
     for block in doc.blocks:
         if isinstance(block, Heading):
-            # Generate number for this heading level
             number = numberer.get_number_for_level(block.level)
-            
-            # Check if heading already has numbering
             text = block.text.strip()
-            if text and not text[0].isdigit():
-                # Add numbering to heading text
-                numbered_text = f"{number} {text}"
-                new_block = Heading(level=block.level, text=numbered_text)
-            else:
-                # Heading might already have numbering, replace it
-                # Find where the title starts (after potential existing numbering)
+            if block.level == 1:
                 import re
                 match = re.match(r'^[\d\.\s]+(.+)$', text)
-                if match:
-                    title = match.group(1).strip()
-                    numbered_text = f"{number} {title}"
-                else:
+                clean = match.group(1).strip() if match else text
+                new_block = Heading(level=block.level, text=clean)
+            else:
+                if text and not text[0].isdigit():
                     numbered_text = f"{number} {text}"
+                else:
+                    import re
+                    match = re.match(r'^[\d\.\s]+(.+)$', text)
+                    if match:
+                        title = match.group(1).strip()
+                        numbered_text = f"{number} {title}"
+                    else:
+                        numbered_text = f"{number} {text}"
                 new_block = Heading(level=block.level, text=numbered_text)
-            
             new_blocks.append(new_block)
         else:
             # Keep non-heading blocks as-is
@@ -101,28 +99,27 @@ def add_numbering_to_chapters(chapters: List[InternalDoc]) -> List[InternalDoc]:
         
         for block in chapter.blocks:
             if isinstance(block, Heading):
-                # Generate number for this heading level
                 number = numberer.get_number_for_level(block.level)
-                
-                # Add numbering to heading text
                 text = block.text.strip()
-                if text and not text[0].isdigit():
-                    # Add numbering
-                    numbered_text = f"{number} {text}"
-                else:
-                    # Replace existing numbering
+                if block.level == 1:
                     import re
                     match = re.match(r'^[\d\.\s]+(.+)$', text)
-                    if match:
-                        title = match.group(1).strip()
-                        numbered_text = f"{number} {title}"
-                    else:
+                    clean = match.group(1).strip() if match else text
+                    new_block = Heading(level=block.level, text=clean)
+                else:
+                    if text and not text[0].isdigit():
                         numbered_text = f"{number} {text}"
-                
-                new_block = Heading(level=block.level, text=numbered_text)
+                    else:
+                        import re
+                        match = re.match(r'^[\d\.\s]+(.+)$', text)
+                        if match:
+                            title = match.group(1).strip()
+                            numbered_text = f"{number} {title}"
+                        else:
+                            numbered_text = f"{number} {text}"
+                    new_block = Heading(level=block.level, text=numbered_text)
                 new_blocks.append(new_block)
             else:
-                # Keep non-heading blocks as-is
                 new_blocks.append(block)
         
         numbered_chapters.append(InternalDoc(blocks=new_blocks))

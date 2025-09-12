@@ -109,8 +109,10 @@ def validate_markdown_numbering(md_text: str) -> None:
         
         level = len(match.group(1))
         title = match.group(2).strip()
-        
-        # Check if title starts with a number
+
+        if level == 1:
+            continue
+
         if not re.match(r'^[\dIVXLCDM]+(?:[.\-]\d+)*\s+', title, re.IGNORECASE):
             raise NumberingValidationError(
                 f"Line {line_num}: Heading missing numbering: '{line}'"
