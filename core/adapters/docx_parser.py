@@ -59,6 +59,62 @@ def _styles_map(styles_xml: bytes | None) -> Dict[str, str]:
         if sid: out[sid] = name
     return out
 
+def _style_num_map(styles_xml: bytes | None) -> Dict[str, str]:
+    """Map styleId -> numId for list styles."""
+    if not styles_xml:
+        return {}
+    root = ET.fromstring(styles_xml)
+    out: Dict[str, str] = {}
+    for s in root.findall(".//w:style", NS):
+        sid = s.attrib.get(f"{{{NS['w']}}}styleId")
+        numPr = s.find("w:pPr/w:numPr", NS)
+        if sid and numPr is not None:
+            numId = numPr.find("w:numId", NS)
+            if numId is not None:
+                out[sid] = numId.attrib.get(f"{{{NS['w']}}}val", "")
+    return out
+
+def _numbering_formats(numbering_xml: bytes | None) -> Dict[str, str]:
+    """Map numId -> numFmt (e.g., bullet, decimal)."""
+    if not numbering_xml:
+        return {}
+    root = ET.fromstring(numbering_xml)
+    abstract_map: Dict[str, str] = {}
+    for abs_num in root.findall("w:abstractNum", NS):
+        abs_id = abs_num.attrib.get(f"{{{NS['w']}}}abstractNumId")
+        lvl = abs_num.find("w:lvl", NS)
+        if abs_id and lvl is not None:
+            fmt_el = lvl.find("w:numFmt", NS)
+            if fmt_el is not None:
+                abstract_map[abs_id] = fmt_el.attrib.get(f"{{{NS['w']}}}val", "")
+    out: Dict[str, str] = {}
+    for num in root.findall("w:num", NS):
+        num_id = num.attrib.get(f"{{{NS['w']}}}numId")
+        abs_id_el = num.find("w:abstractNumId", NS)
+        abs_id = abs_id_el.attrib.get(f"{{{NS['w']}}}val", "") if abs_id_el is not None else ""
+        if num_id and abs_id in abstract_map:
+            out[num_id] = abstract_map[abs_id]
+    return out
+
+def _paragraph_list_type(p: ET.Element, style_nums: Dict[str, str], num_fmts: Dict[str, str]) -> str | None:
+    """Return list format if paragraph is part of a list."""
+    pPr = p.find("w:pPr", NS)
+    if pPr is None:
+        return None
+    numPr = pPr.find("w:numPr", NS)
+    if numPr is not None:
+        numId_el = numPr.find("w:numId", NS)
+        if numId_el is not None:
+            num_id = numId_el.attrib.get(f"{{{NS['w']}}}val", "")
+            return num_fmts.get(num_id)
+    pStyle = pPr.find("w:pStyle", NS)
+    if pStyle is not None:
+        sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
+        num_id = style_nums.get(sid)
+        if num_id:
+            return num_fmts.get(num_id)
+    return None
+
 def _get_paragraph_number(p: ET.Element, numbering_xml: bytes = None) -> str:
     """Extract paragraph numbering (e.g., '4.1.3') from Word's numbering system."""
     pPr = p.find("w:pPr", NS)
@@ -391,6 +447,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         doc_xml = _read(z, "word/document.xml")
         styles_xml = _read(z, "word/styles.xml")
         rels_xml = _read(z, "word/_rels/document.xml.rels")
+        numbering_xml = _read(z, "word/numbering.xml")
         
         # Extract images from media directory and create ResourceRef objects
         media_images = _extract_images_from_media(z)
@@ -399,6 +456,8 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         raise RuntimeError("word/document.xml not found")
     
     styles_map = _styles_map(styles_xml)
+    style_nums = _style_num_map(styles_xml)
+    num_fmts = _numbering_formats(numbering_xml)
     relationships = _load_relationships(rels_xml)
     body = ET.fromstring(doc_xml).find(".//w:body", NS)
     if body is None:
@@ -412,6 +471,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     for p in body.findall("w:p", NS):
         lvl = _heading_level(p, styles_map, patterns)
         text = _text_of(p)  # Get basic text first
+        list_type = _paragraph_list_type(p, style_nums, num_fmts)
         
         # Check for images in this paragraph
         paragraph_images = _find_images_in_paragraph(p, relationships, media_images)
@@ -436,7 +496,8 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                     level = min(lvl, 6)
                     blocks.append(Heading(level=level, text=text))
             else:
-                # Create paragraph with inline text
+                if list_type:
+                    text = f"- {text}"
                 inlines = [InlineText(content=text)]
                 blocks.append(Paragraph(inlines=inlines))
         elif paragraph_images:
