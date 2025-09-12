@@ -7,6 +7,7 @@ from core.model.internal_doc import (
     Inline,
 )
 
+
 def _render_inline(inline: Inline) -> str:
     """Renders a single inline element to its Markdown representation."""
     type = inline.type
@@ -36,12 +37,14 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
         if block.caption:
-            # Ensure path starts with / but avoid double slashes
-            normalized_path = f"/{path}" if not path.startswith('/') else path
+            # Use resource_id as the image filename (e.g., "image2" -> "/image2.png")
+            # This matches the actual filenames extracted from DOCX
             return (f"::sign-image\n"
-                   f"src: {normalized_path}\n\n"
+                   f"---\n"
+                   f"src: /{block.resource_id}.png\n"
                    f"sign: {block.caption}\n"
-                   f":\n")
+                   f"---\n"
+                   f"::")
         return f"![{block.alt}]({path})"
     if type == "code":
         info = []
@@ -80,6 +83,7 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str], document_name: 
     """
     markdown_lines = []
     prev_list = False
+    
     for block in doc.blocks:
         rendered = _render_block(block, asset_map, document_name)
         is_list = rendered.lstrip().startswith("- ")

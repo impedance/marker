@@ -418,12 +418,50 @@ def _extract_text_from_paragraph(p: ET.Element) -> str:
     return "".join(texts)
 
 
+def _find_seq_picnum_in_paragraph(p: ET.Element) -> str:
+    """Extract SEQ picnum field result from a paragraph."""
+    # Look for SEQ picnum field instruction
+    has_seq_picnum = False
+    for instr in p.findall('.//w:instrText', NS):
+        if instr.text and 'SEQ picnum' in instr.text:
+            has_seq_picnum = True
+            break
+    
+    if not has_seq_picnum:
+        return ""
+    
+    # Find the field result (text after fldChar with type="separate")
+    for r in p.findall('.//w:r', NS):
+        found_separate = False
+        for elem in r:
+            w_ns = NS["w"]
+            if (elem.tag == f'{{{w_ns}}}fldChar' and 
+                elem.attrib.get(f'{{{w_ns}}}fldCharType') == 'separate'):
+                found_separate = True
+            elif found_separate and elem.tag == f'{{{w_ns}}}t' and elem.text:
+                return elem.text.strip()
+    
+    return ""
+
+
 def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> str:
-    """Find caption text for an image paragraph by looking at following paragraphs."""
+    """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text."""
     try:
         img_index = all_paragraphs.index(image_para)
         
-        # Check next 3 paragraphs for caption
+        # First, look for SEQ picnum field in previous paragraphs (up to 3 paragraphs back)
+        figure_number = ""
+        for offset in range(1, 4):
+            prev_index = img_index - offset
+            if prev_index >= 0:
+                prev_para = all_paragraphs[prev_index]
+                seq_num = _find_seq_picnum_in_paragraph(prev_para)
+                if seq_num:
+                    figure_number = seq_num
+                    break
+        
+        # Then, look for caption text in following paragraphs
+        caption_text = ""
         for offset in range(1, 4):
             next_index = img_index + offset
             if next_index < len(all_paragraphs):
@@ -432,7 +470,7 @@ def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Elem
                 if _is_caption_paragraph(next_para, styles_map):
                     caption_text = _extract_text_from_paragraph(next_para).strip()
                     if caption_text:
-                        return caption_text
+                        break
                         
                 # If we encounter another image, stop looking
                 if next_para.findall('.//w:drawing', NS):
@@ -442,6 +480,13 @@ def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Elem
                 text = _extract_text_from_paragraph(next_para).strip()
                 if len(text) > 50 and not _is_caption_paragraph(next_para, styles_map):
                     break
+        
+        # Combine figure number and caption text
+        if figure_number and caption_text:
+            return f"Рисунок {figure_number} – {caption_text}"
+        elif caption_text:
+            # Fallback to just caption text if no SEQ field found
+            return caption_text
     
     except ValueError:
         # image_para not found in all_paragraphs
