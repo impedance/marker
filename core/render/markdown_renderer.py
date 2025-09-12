@@ -44,8 +44,19 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str]) -> str:
     Returns:
         A string containing the rendered Markdown document.
     """
-    markdown_parts = []
+    markdown_lines = []
+    prev_list = False
     for block in doc.blocks:
-        markdown_parts.append(_render_block(block, asset_map))
+        rendered = _render_block(block, asset_map)
+        is_list = rendered.lstrip().startswith("- ")
+        if is_list:
+            if not prev_list and markdown_lines:
+                markdown_lines.append("")
+            markdown_lines.append(rendered)
+        else:
+            if markdown_lines:
+                markdown_lines.append("")
+            markdown_lines.append(rendered)
+        prev_list = is_list
 
-    return "\n\n".join(markdown_parts)
+    return "\n".join(markdown_lines)
