@@ -70,3 +70,11 @@ def test_render_markdown():
         "![An example image](assets/img_1.png)"
     )
     assert markdown_output == expected_markdown
+
+
+def test_render_bash_command():
+    """Ensures shell commands are wrapped in bash code blocks."""
+    doc = InternalDoc(blocks=[Paragraph(inlines=[Text(content="# mkdir -p /var/www/html/media")])])
+    markdown_output = render_markdown(doc, {})
+    expected = "```bash\nmkdir -p /var/www/html/media\n```"
+    assert markdown_output == expected
