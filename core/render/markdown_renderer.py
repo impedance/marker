@@ -31,11 +31,19 @@ def _render_block(block: Block, asset_map: Dict[str, str]) -> str:
         match = re.match(r"(?:[-*]\s+|\d+[.)]\s+)?#\s+(.*)", stripped)
         if match:
             command = match.group(1)
-            return f"```bash\n{command}\n```"
+            return f"```bash Terminal\n{command}\n```"
         return text
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
         return f"![{block.alt}]({path})"
+    if type == "code":
+        info = []
+        if block.language:
+            info.append(block.language)
+        if block.title:
+            info.append(block.title)
+        fence = " ".join(info)
+        return f"```{fence}\n{block.code}\n```"
     if type == "table":
         def _row(r) -> str:
             cells = []
