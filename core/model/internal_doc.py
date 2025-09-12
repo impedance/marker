@@ -46,6 +46,14 @@ class Image(BaseModel):
     alt: str = ""
     resource_id: str  # Corresponds to a ResourceRef
 
+
+class CodeBlock(BaseModel):
+    """A fenced code block."""
+    type: Literal["code"] = "code"
+    code: str
+    language: str | None = None
+    title: str | None = None
+
 class ListItem(BaseModel):
     """An item in a list, can contain nested blocks."""
     type: Literal["list_item"] = "list_item"
@@ -73,7 +81,7 @@ class Table(BaseModel):
     header: TableRow
     rows: List[TableRow] = Field(default_factory=list)
 
-Block = Union[Paragraph, Heading, Image, ListBlock, Table]
+Block = Union[Paragraph, Heading, Image, ListBlock, Table, CodeBlock]
 
 # Update forward references for nested models
 ListItem.model_rebuild()

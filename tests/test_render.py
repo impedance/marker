@@ -1,7 +1,7 @@
 import hashlib
 from pathlib import Path
 
-from core.model.internal_doc import InternalDoc, Heading, Paragraph, Text, Bold, Image
+from core.model.internal_doc import InternalDoc, Heading, Paragraph, Text, Bold, Image, CodeBlock
 from core.model.resource_ref import ResourceRef
 from core.render.assets_exporter import export_assets
 from core.render.markdown_renderer import render_markdown
@@ -73,18 +73,44 @@ def test_render_markdown():
 
 
 def test_render_bash_command():
-    """Ensures shell commands are wrapped in bash code blocks."""
+    """Ensures shell commands are wrapped in bash code blocks with terminal label."""
     doc = InternalDoc(blocks=[Paragraph(inlines=[Text(content="# mkdir -p /var/www/html/media")])])
     markdown_output = render_markdown(doc, {})
-    expected = "```bash\nmkdir -p /var/www/html/media\n```"
+    expected = "```bash Terminal\nmkdir -p /var/www/html/media\n```"
     assert markdown_output == expected
 
 
 def test_render_bash_command_in_list():
-    """Shell command prefixed by a list marker becomes a code block."""
+    """Shell command prefixed by a list marker becomes a code block with terminal label."""
     doc = InternalDoc(
         blocks=[Paragraph(inlines=[Text(content="- # dnf install -y rosa-release-postgres-16")])]
     )
     markdown_output = render_markdown(doc, {})
-    expected = "```bash\ndnf install -y rosa-release-postgres-16\n```"
+    expected = "```bash Terminal\ndnf install -y rosa-release-postgres-16\n```"
+    assert markdown_output == expected
+
+
+def test_render_code_block_with_filename():
+    """Renders a code block with language and filename."""
+    doc = InternalDoc(
+        blocks=[
+            CodeBlock(code="version: '3'\nservices:\n  web:\n    image: nginx", language="yaml", title="docker-compose.yaml")
+        ]
+    )
+    markdown_output = render_markdown(doc, {})
+    expected = (
+        "```yaml docker-compose.yaml\n"
+        "version: '3'\nservices:\n  web:\n    image: nginx\n"
+        "```"
+    )
+    assert markdown_output == expected
+
+
+def test_render_shebang_code_block():
+    """Renders a bash script code block using a shebang."""
+    doc = InternalDoc(
+        blocks=[CodeBlock(code="#!/bin/bash\necho hi", language="bash")]
+    )
+    markdown_output = render_markdown(doc, {})
+    expected = "```bash\n#!/bin/bash\necho hi\n```"
     assert markdown_output == expected
