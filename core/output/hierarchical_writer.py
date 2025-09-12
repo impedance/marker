@@ -238,3 +238,164 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
         shutil.rmtree(temp_assets_dir)
     
     return written
+
+
+def _sanitize_dir_name(name: str) -> str:
+    """Sanitize a string to be safe for use as a directory name."""
+    import re
+    # Remove or replace problematic characters
+    sanitized = re.sub(r'[<>:"/\\|?*]', ' ', name)
+    # Remove leading/trailing whitespace and dots
+    sanitized = sanitized.strip('. ')
+    # Collapse multiple spaces
+    sanitized = re.sub(r'\s{2,}', ' ', sanitized)
+    # Limit length to avoid filesystem issues
+    if len(sanitized) > 100:
+        sanitized = sanitized[:100].rstrip('. ')
+    # Ensure it's not empty
+    if not sanitized:
+        sanitized = "unnamed"
+    
+    return sanitized
+
+
+def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: str | os.PathLike) -> List[Path]:
+    """
+    Exports a DOCX into a folder hierarchy by headings with centralized images structure.
+    
+    Instead of creating images/ folder in each section, creates one central images/ folder
+    with subdirectories named after sections.
+    
+    Structure:
+    document_name/
+    ├── images/
+    │   ├── section1_name/
+    │   └── section2_name/
+    ├── section1_dir/
+    │   └── index.md (references ../images/section1_name/...)
+    └── section2_dir/
+        └── index.md (references ../images/section2_name/...)
+    """
+    from ..render.assets_exporter import export_assets
+    
+    writer = Writer()
+    out_root = Path(out_root)
+    out_root.mkdir(parents=True, exist_ok=True)
+    
+    # Extract document name from path and create document folder
+    docx_path = Path(docx_path)
+    doc_name = _clean_filename(docx_path.stem)
+    doc_root = out_root / doc_name
+    doc_root.mkdir(parents=True, exist_ok=True)
+    
+    doc, resources = parse_document(str(docx_path))
+    
+    # Create centralized images directory
+    central_images_dir = doc_root / "images"
+    
+    # Export assets to temporary location first
+    temp_assets_dir = doc_root / "temp_assets"
+    temp_asset_map = export_assets(resources, str(temp_assets_dir)) if resources else {}
+    
+    sections = _collect_sections(doc.blocks)
+    written: List[Path] = []
+    
+    # First pass: collect all sections and their images to plan the structure
+    section_images = {}  # section_code -> list of resource_ids
+    section_names = {}   # section_code -> section_title
+    
+    for sec in sections:
+        code = _code_for_levels(sec.number)
+        safe_title = _clean_filename(sec.title)
+        section_names[code] = safe_title
+        
+        # Find image resource IDs used in this section
+        used_images = []
+        for block in sec.blocks:
+            if getattr(block, "type", None) == "image":
+                resource_id = getattr(block, "resource_id", None)
+                if resource_id:
+                    used_images.append(resource_id)
+        
+        if used_images:
+            section_images[code] = used_images
+    
+    # Create section-specific image directories and copy files
+    final_asset_map = {}
+    
+    for section_code, image_ids in section_images.items():
+        section_title = section_names[section_code]
+        sanitized_title = _sanitize_dir_name(f"{section_code}.{section_title}")
+        section_image_dir = central_images_dir / sanitized_title
+        writer.ensure_dir(section_image_dir)
+        
+        # Copy images for this section
+        for resource_id in image_ids:
+            if resource_id in temp_asset_map:
+                temp_relative_path = temp_asset_map[resource_id]
+                temp_file_path = temp_assets_dir / Path(temp_relative_path).name
+                
+                if temp_file_path.exists():
+                    # Determine file extension from temp asset map
+                    filename = Path(temp_relative_path).name
+                    target_file = section_image_dir / filename
+                    
+                    # Copy file
+                    import shutil
+                    shutil.copy2(temp_file_path, target_file)
+                    
+                    # Update final asset map with new path
+                    final_asset_map[resource_id] = f"images/{sanitized_title}/{filename}"
+    
+    # Second pass: generate markdown files using the centralized asset map
+    h1_dir: Optional[Path] = None
+    last_h1_num: Optional[int] = None
+    
+    for sec in sections:
+        code = _code_for_levels(sec.number)
+        safe_title = _clean_filename(sec.title)
+        
+        if sec.level == 1:
+            last_h1_num = sec.number[0]
+            h1_dir = doc_root / f"{code}.{safe_title}"
+            writer.ensure_dir(h1_dir)
+            
+            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
+            path = h1_dir / "index.md"
+            writer.write_text(path, md)
+            written.append(path)
+            
+        elif sec.level == 2:
+            # Handle orphaned level 2 sections (no matching H1 parent)
+            if h1_dir is None or last_h1_num != sec.number[0]:
+                # Create a fallback directory structure for orphaned sections
+                fallback_dir = doc_root / f"{code}.{safe_title}"
+                writer.ensure_dir(fallback_dir)
+                
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
+                path = fallback_dir / "index.md"
+                writer.write_text(path, md)
+                written.append(path)
+            else:
+                # Normal case: level 2 section under existing H1
+                md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
+                path = h1_dir / f"{code}.{safe_title}.md"
+                writer.write_text(path, md)
+                written.append(path)
+        else:
+            # For level 3+ sections
+            md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
+            fallback_code = _code_for_levels(sec.number[:3])
+            if h1_dir:
+                path = h1_dir / f"{fallback_code}.{safe_title}.md"
+            else:
+                path = doc_root / f"{fallback_code}.{safe_title}.md"
+            writer.write_text(path, md)
+            written.append(path)
+    
+    # Clean up temporary assets directory
+    if temp_assets_dir.exists():
+        import shutil
+        shutil.rmtree(temp_assets_dir)
+    
+    return written

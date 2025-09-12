@@ -14,7 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.model.config import load_config, PipelineConfig
 from core.pipeline import DocumentPipeline
-from core.output.hierarchical_writer import export_docx_hierarchy
+from core.output.hierarchical_writer import export_docx_hierarchy, export_docx_hierarchy_centralized
 
 
 app = typer.Typer(
@@ -201,9 +201,16 @@ def build(
     out: Path = typer.Option(
         Path("out"), "--out", "-o", help="Output directory for chapter hierarchy"
     ),
+    centralized_images: bool = typer.Option(
+        True, "--centralized-images/--distributed-images", 
+        help="Use centralized images structure (one images/ folder) vs distributed (images/ in each section)"
+    ),
 ):
     """Export DOCX into hierarchical chapter structure."""
-    written = export_docx_hierarchy(docx, out)
+    if centralized_images:
+        written = export_docx_hierarchy_centralized(docx, out)
+    else:
+        written = export_docx_hierarchy(docx, out)
     for path in written:
         console.print(f"\u2713 {path}")
 

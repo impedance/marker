@@ -117,11 +117,13 @@ class TestDocumentPipelineIntegration:
             # Assert
             assert result.success
             
-            # Check that custom assets directory is used
+            # Check that images directory is used (new structure)
             temp_path = Path(temp_dir)
             doc_dir = temp_path / DOCX_PATH.stem
-            custom_assets_dir = doc_dir / "custom_assets"
-            assert custom_assets_dir.exists(), "Custom assets directory should be created"
+            images_dir = doc_dir / "images"
+            # Images directory should exist if there are any images
+            if result.asset_files:
+                assert images_dir.exists(), "Images directory should be created when assets exist"
             
             # Check manifest uses custom locale
             manifest_path = Path(result.manifest_file)
@@ -162,11 +164,13 @@ class TestDocumentPipelineIntegration:
             temp_path = Path(temp_dir)
             doc_dir = temp_path / DOCX_PATH.stem
             chapters_dir = doc_dir / "chapters"
-            assets_dir = doc_dir / "assets"
+            images_dir = doc_dir / "images"
             
             assert doc_dir.exists(), "Document directory should be created"
             assert chapters_dir.exists(), "Chapters directory should be created"
-            assert assets_dir.exists(), "Assets directory should be created"
+            # Images directory should exist if there are any images
+            if result.asset_files:
+                assert images_dir.exists(), "Images directory should be created when assets exist"
             
             assert (doc_dir / "index.md").exists(), "Index file should be created"
             assert (doc_dir / "manifest.json").exists(), "Manifest file should be created"

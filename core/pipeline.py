@@ -8,7 +8,7 @@ from core.model.config import PipelineConfig
 from core.output.writer import Writer
 from core.output.file_naming import generate_chapter_filename
 from core.output.toc_builder import build_index, build_manifest
-from core.render.assets_exporter import export_assets
+from core.render.assets_exporter import export_assets, export_assets_by_chapter
 from core.render.markdown_renderer import render_markdown
 from core.split.chapter_splitter import split_into_chapters, ChapterRules
 from core.transforms.normalize import run as normalize
@@ -66,10 +66,8 @@ class DocumentPipeline:
             rules = ChapterRules(level=self.config.split_level)
             chapters = split_into_chapters(doc, rules)
 
-            # 4. Export assets
-            asset_map = export_assets(resources, str(assets_dir))
-
-            # 5. Render markdown for each chapter and write files
+            # 4. Prepare chapter data for asset export
+            chapter_data = []
             chapter_files = []
             chapter_info = []
             
@@ -86,6 +84,14 @@ class DocumentPipeline:
                 if not chapter_title:
                     chapter_title = f"Chapter {i}"
                 
+                # Store chapter data for asset export
+                chapter_data.append((chapter, chapter_title))
+                
+            # 5. Export assets using chapter-based organization
+            asset_map = export_assets_by_chapter(resources, chapter_data, str(doc_output_dir))
+            
+            # 6. Render markdown for each chapter and write files
+            for i, (chapter, chapter_title) in enumerate(chapter_data):
                 # Generate filename - start numbering from 0 for title page/TOC
                 filename = generate_chapter_filename(i, chapter_title, self.config.chapter_pattern)
                 chapter_path = chapters_dir / filename
@@ -103,29 +109,29 @@ class DocumentPipeline:
                     "path": f"chapters/{filename}"
                 })
 
-            # 6. Generate metadata
+            # 7. Generate metadata
             metadata = Metadata(
                 title=input_basename.replace('-', ' ').replace('_', ' ').title(),
                 language=self.config.locale
             )
 
-            # 7. Generate and write index.md (TOC)
+            # 8. Generate and write index.md (TOC)
             index_content = build_index(chapter_info, metadata)
             index_path = doc_output_dir / "index.md"
             self.writer.write_text(index_path, index_content)
 
-            # 8. Generate and write manifest.json
+            # 9. Generate and write manifest.json
             manifest_data = build_manifest(chapter_info, asset_map, metadata)
             manifest_path = doc_output_dir / "manifest.json"
             manifest_json = json.dumps(manifest_data, indent=2, ensure_ascii=False)
             self.writer.write_text(manifest_path, manifest_json)
 
-            # Get list of asset files - asset_map values are relative paths that include the directory name
+            # Get list of asset files - asset_map values are relative paths from base output dir
             asset_files = []
             for relative_path in asset_map.values():
-                # Extract just the filename from the relative path (remove the directory part)
-                filename = Path(relative_path).name
-                asset_files.append(str(assets_dir / filename))
+                # Convert relative path to absolute path
+                full_asset_path = doc_output_dir / relative_path
+                asset_files.append(str(full_asset_path))
 
             return PipelineResult(
                 success=True,

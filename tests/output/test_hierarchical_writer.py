@@ -94,11 +94,14 @@ def test_cli_build_invokes_export(monkeypatch, tmp_path):
     runner = CliRunner()
     called: dict[str, tuple[Path, Path]] = {}
 
-    def fake_export(docx_path: Path, out_root: Path):
+    def fake_export_centralized(docx_path: Path, out_root: Path):
         called["args"] = (docx_path, out_root)
         return []
 
-    monkeypatch.setattr("doc2chapmd.export_docx_hierarchy", fake_export)
+    # Mock both functions since the build command can use either
+    monkeypatch.setattr("doc2chapmd.export_docx_hierarchy", fake_export_centralized)
+    monkeypatch.setattr("doc2chapmd.export_docx_hierarchy_centralized", fake_export_centralized)
+    
     result = runner.invoke(app, ["build", "file.docx", "--out", str(tmp_path)])
     assert result.exit_code == 0
     assert called["args"] == (Path("file.docx"), tmp_path)
