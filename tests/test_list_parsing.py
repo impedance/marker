@@ -2,6 +2,7 @@ from pathlib import Path
 from docx import Document
 
 from core.adapters.document_parser import parse_document
+from core.render.markdown_renderer import render_markdown
 
 
 def test_bullet_list_parsed(tmp_path: Path) -> None:
@@ -19,3 +20,6 @@ def test_bullet_list_parsed(tmp_path: Path) -> None:
         if block.type == "paragraph"
     ]
     assert paragraphs[:2] == ["- First", "- Second"]
+
+    markdown = render_markdown(internal_doc, {})
+    assert markdown.splitlines()[:2] == ["- First", "- Second"]
