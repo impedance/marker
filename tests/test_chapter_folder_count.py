@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 from core.adapters.chapter_extractor import extract_chapter_structure
-from core.output.hierarchical_writer import export_docx_hierarchy_centralized
+from core.output.hierarchical_writer import export_docx_hierarchy_centralized, _clean_filename
 
 
 class TestChapterFolderCount:
@@ -27,14 +27,14 @@ class TestChapterFolderCount:
             # Process the document using hierarchical writer
             export_docx_hierarchy_centralized(docx_path, output_dir)
             
-            # Get the generated directories
-            doc_name = docx_path.stem  # cu-admin-install
+            # Get the generated directories - use the same cleaning as the function
+            doc_name = _clean_filename(docx_path.stem)  # transliterated version
             doc_output_dir = output_dir / doc_name
             
-            # Count folders excluding 'images' folder
+            # Count folders excluding 'images' folder and centralized images directory
             folders = [
                 d for d in doc_output_dir.iterdir() 
-                if d.is_dir() and d.name != 'images'
+                if d.is_dir() and d.name != 'images' and d.name != doc_name
             ]
             folder_count = len(folders)
             
@@ -75,14 +75,14 @@ class TestChapterFolderCount:
                 # Process the document using hierarchical writer
                 export_docx_hierarchy_centralized(doc_path, output_dir)
                 
-                # Get the generated directories
-                doc_name = doc_path.stem
+                # Get the generated directories - use the same cleaning as the function
+                doc_name = _clean_filename(doc_path.stem)
                 doc_output_dir = output_dir / doc_name
                 
-                # Count folders excluding 'images' folder
+                # Count folders excluding 'images' folder and centralized images directory
                 folders = [
                     d for d in doc_output_dir.iterdir() 
-                    if d.is_dir() and d.name != 'images'
+                    if d.is_dir() and d.name != 'images' and d.name != doc_name
                 ]
                 folder_count = len(folders)
                 
@@ -117,25 +117,25 @@ class TestChapterFolderCount:
             # Process the document using hierarchical writer
             export_docx_hierarchy_centralized(docx_path, output_dir)
             
-            # Get the generated directories
-            doc_name = docx_path.stem
+            # Get the generated directories - use the same cleaning as the function
+            doc_name = _clean_filename(docx_path.stem)
             doc_output_dir = output_dir / doc_name
             
-            # Check that images folder exists but is excluded from count
-            images_folder = doc_output_dir / 'images'
-            assert images_folder.exists(), "Images folder should exist"
-            assert images_folder.is_dir(), "Images should be a directory"
+            # Check that centralized images folder exists but is excluded from count  
+            centralized_images_folder = doc_output_dir / doc_name
+            assert centralized_images_folder.exists(), "Centralized images folder should exist"
+            assert centralized_images_folder.is_dir(), "Centralized images should be a directory"
             
             # Count all folders
             all_folders = [d for d in doc_output_dir.iterdir() if d.is_dir()]
             
-            # Count folders excluding images
+            # Count folders excluding centralized images directory
             content_folders = [
                 d for d in doc_output_dir.iterdir() 
-                if d.is_dir() and d.name != 'images'
+                if d.is_dir() and d.name != doc_name
             ]
             
-            # Images folder should be excluded
+            # Centralized images folder should be excluded
             assert len(all_folders) == len(content_folders) + 1, (
                 "Images folder should be excluded from content folder count"
             )

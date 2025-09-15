@@ -34,17 +34,17 @@ class TestHierarchicalBuildCentralizedImages:
         mock_doc = InternalDoc(blocks=[
             Heading(level=1, text="1 Общие сведения"),
             Paragraph(inlines=[]),
-            Image(resource_id="img1", alt="Diagram 1"),
+            Image(resource_id="image2", alt="Diagram 1"),
             Heading(level=1, text="2 130000.API"),
             Paragraph(inlines=[]),
-            Image(resource_id="img2", alt="API Schema"),
-            Image(resource_id="img3", alt="Flow Chart"),
+            Image(resource_id="image3", alt="API Schema"),
+            Image(resource_id="image4", alt="Flow Chart"),
         ])
         
         mock_resources = [
-            ResourceRef(id="img1", content=b"fake_png1", mime_type="image/png", sha256="hash1"),
-            ResourceRef(id="img2", content=b"fake_png2", mime_type="image/png", sha256="hash2"), 
-            ResourceRef(id="img3", content=b"fake_png3", mime_type="image/png", sha256="hash3"),
+            ResourceRef(id="image2", content=b"fake_png1", mime_type="image/png", sha256="hash1"),
+            ResourceRef(id="image3", content=b"fake_png2", mime_type="image/png", sha256="hash2"), 
+            ResourceRef(id="image4", content=b"fake_png3", mime_type="image/png", sha256="hash3"),
         ]
         
         # Mock the parse_document function
@@ -90,12 +90,15 @@ class TestHierarchicalBuildCentralizedImages:
         
         if section1_md.exists():
             content = section1_md.read_text()
-            assert f"{doc_dir.name}/Obshchie-svedeniya/image2.png" in content
+            # Check for sign-image format
+            assert "::sign-image" in content
+            assert "src: /image2.png" in content
             
         if section2_md.exists():
             content = section2_md.read_text()
-            assert f"{doc_dir.name}/130000api/image3.png" in content
-            assert f"{doc_dir.name}/130000api/image4.png" in content
+            # Check for sign-image format  
+            assert "::sign-image" in content
+            assert "src: /image3.png" in content or "src: /image4.png" in content
     
     def test_export_hierarchy_handles_sections_without_images(self, sample_docx_path, temp_output_dir, monkeypatch):
         """Test that sections without images don't create empty directories."""

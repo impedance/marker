@@ -67,7 +67,12 @@ def test_render_markdown():
     expected_markdown = (
         "# Document Title\n\n"
         "This is a **sample** paragraph.\n\n"
-        "![An example image](assets/img_1.png)"
+        "::sign-image\n"
+        "---\n"
+        "src: /img_1.png\n"
+        "sign: An example image\n"
+        "---\n"
+        "::"
     )
     assert markdown_output == expected_markdown
 
@@ -151,7 +156,14 @@ def test_render_image_without_caption():
     markdown_output = render_markdown(doc, asset_map)
     
     # Assert
-    expected_markdown = "![Image without caption](image1.png)"
+    expected_markdown = (
+        "::sign-image\n"
+        "---\n"
+        "src: /img_1.png\n"
+        "sign: Image without caption\n"
+        "---\n"
+        "::"
+    )
     assert markdown_output == expected_markdown
 
 
