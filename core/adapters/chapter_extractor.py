@@ -12,17 +12,10 @@ from xml.etree import ElementTree as ET
 from pathlib import Path
 from dataclasses import dataclass
 
-NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-
-DEFAULT_HEADING_PATTERNS = [
-    r"^Heading\s*(\d)$",           # English
-    r"^Заголовок\s*(\d)$",         # Russian exact
-    r".*Заголовок\s*(\d)$",        # Russian with prefixes like 'ROSA_Заголовок 1'
-    r"^Titre\s*(\d)$",             # French
-    r"^Überschrift\s*(\d)$",       # German
-    r"^Encabezado\s*(\d)$",        # Spanish
-    r".*\bheading\s*(\d)$",        # fallback lowercase '... heading 2'
-]
+# Import shared constants and utilities
+from core.utils.xml_constants import NS, DEFAULT_HEADING_PATTERNS
+from core.utils.text_processing import extract_heading_number_and_title
+from core.utils.docx_utils import read_docx_part, styles_map, heading_level
 
 
 @dataclass
@@ -49,27 +42,10 @@ class ChapterNode:
         }
 
 
-def _read_docx_part(z: zipfile.ZipFile, name: str) -> bytes | None:
-    """Read a part from DOCX archive."""
-    return z.read(name) if name in z.namelist() else None
+# Function moved to core.utils.docx_utils
 
 
-def _build_styles_map(styles_xml: bytes | None) -> Dict[str, str]:
-    """Map styleId -> human-readable name from styles.xml."""
-    if not styles_xml:
-        return {}
-    
-    root = ET.fromstring(styles_xml)
-    styles_map: Dict[str, str] = {}
-    
-    for style in root.findall(".//w:style", NS):
-        style_id = style.attrib.get(f"{{{NS['w']}}}styleId")
-        name_el = style.find("w:name", NS)
-        name = name_el.attrib.get(f"{{{NS['w']}}}val") if name_el is not None else style_id
-        if style_id:
-            styles_map[style_id] = name
-    
-    return styles_map
+# Function moved to core.utils.docx_utils (renamed to styles_map)
 
 
 def _extract_paragraph_text(paragraph: ET.Element) -> str:
@@ -80,68 +56,10 @@ def _extract_paragraph_text(paragraph: ET.Element) -> str:
     return "".join(texts).strip()
 
 
-def _extract_heading_number_and_title(text: str) -> Tuple[str, str]:
-    """Extract chapter number and title from heading text.
-    
-    Args:
-        text: Full heading text (e.g., "4.1.3 Installation and Setup")
-        
-    Returns:
-        Tuple of (number, title) where number might be empty if no numbering found
-    """
-    # Pattern to match various numbering formats
-    number_patterns = [
-        r'^(\d+(?:\.\d+)*)\s+(.+)$',  # "4.1.3 Title" or "2.1 Title" or "2 Title"
-        r'^(\d+(?:\.\d+)*)\.\s+(.+)$',  # "4.1.3. Title" 
-        r'^(\d+(?:\.\d+)*)\s*[-–—]\s*(.+)$',  # "4.1.3 - Title" or "4.1.3 – Title"
-    ]
-    
-    for pattern in number_patterns:
-        match = re.match(pattern, text.strip())
-        if match:
-            return match.group(1), match.group(2).strip()
-    
-    # No numbering found, return empty number and full text as title
-    return "", text
+# Function moved to core.utils.text_processing
 
 
-def _detect_heading_level(paragraph: ET.Element, styles_map: Dict[str, str], 
-                         heading_patterns: List[str]) -> Optional[int]:
-    """Detect heading level from paragraph properties."""
-    pPr = paragraph.find("w:pPr", NS)
-    if pPr is None:
-        return None
-    
-    # Prefer outlineLvl when present
-    outline = pPr.find("w:outlineLvl", NS)
-    if outline is not None:
-        val = outline.attrib.get(f"{{{NS['w']}}}val")
-        if val is not None:
-            try:
-                return int(val) + 1  # outlineLvl 0 => H1
-            except ValueError:
-                pass
-    
-    # Fallback: paragraph style name
-    pStyle = pPr.find("w:pStyle", NS)
-    if pStyle is not None:
-        style_id = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
-        style_name = styles_map.get(style_id, style_id) or style_id
-        
-        for pattern in heading_patterns:
-            match = re.match(pattern, style_name, flags=re.IGNORECASE)
-            if match:
-                try:
-                    return int(match.group(1))
-                except ValueError:
-                    continue
-        
-        # Also try styleId like Heading1
-        match = re.match(r"^Heading(\d)$", style_id, flags=re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-    
-    return None
+# Function moved to core.utils.docx_utils (renamed to heading_level)
 
 
 def extract_chapter_structure(docx_path: str | Path) -> List[ChapterNode]:
@@ -157,13 +75,13 @@ def extract_chapter_structure(docx_path: str | Path) -> List[ChapterNode]:
     docx_path = Path(docx_path)
     
     with zipfile.ZipFile(docx_path) as z:
-        doc_xml = _read_docx_part(z, "word/document.xml")
-        styles_xml = _read_docx_part(z, "word/styles.xml")
+        doc_xml = read_docx_part(z, "word/document.xml")
+        styles_xml = read_docx_part(z, "word/styles.xml")
     
     if not doc_xml:
         raise RuntimeError("word/document.xml not found")
     
-    styles_map = _build_styles_map(styles_xml)
+    style_map = styles_map(styles_xml)
     body = ET.fromstring(doc_xml).find(".//w:body", NS)
     if body is None:
         raise RuntimeError("No <w:body> found")
@@ -173,11 +91,11 @@ def extract_chapter_structure(docx_path: str | Path) -> List[ChapterNode]:
     
     # Extract all headings first
     for paragraph in body.findall("w:p", NS):
-        level = _detect_heading_level(paragraph, styles_map, patterns)
+        level = heading_level(paragraph, style_map, patterns)
         if level:
             text = _extract_paragraph_text(paragraph)
             if text:  # Only process non-empty headings
-                number, title = _extract_heading_number_and_title(text)
+                number, title = extract_heading_number_and_title(text)
                 node = ChapterNode(
                     level=level,
                     title=title or text,

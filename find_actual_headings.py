@@ -6,17 +6,9 @@ Find actual headings (not table of contents) in DOCX file
 import zipfile, re
 from xml.etree import ElementTree as ET
 
-NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-
-DEFAULT_HEADING_PATTERNS = [
-    r"^Heading\s*(\d)$",           # English
-    r"^Заголовок\s*(\d)$",         # Russian exact
-    r".*Заголовок\s*(\d)$",        # Russian with prefixes like 'ROSA_Заголовок 1'
-    r"^Titre\s*(\d)$",             # French
-    r"^Überschrift\s*(\d)$",       # German
-    r"^Encabezado\s*(\d)$",        # Spanish
-    r".*\bheading\s*(\d)$",        # fallback lowercase '... heading 2'
-]
+# Import shared constants and utilities
+from core.utils.xml_constants import NS, DEFAULT_HEADING_PATTERNS
+from core.utils.docx_utils import read_docx_part, styles_map, heading_level
 
 def _styles_map(styles_xml):
     """Map styleId -> human-readable name from styles.xml."""

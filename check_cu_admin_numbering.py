@@ -6,7 +6,9 @@ Check if cu-admin-install.docx has numbering in headings
 import zipfile, re
 from xml.etree import ElementTree as ET
 
-NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+# Import shared constants
+from core.utils.xml_constants import NS, DEFAULT_HEADING_PATTERNS
+from core.utils.docx_utils import read_docx_part, styles_map, heading_level
 
 DEFAULT_HEADING_PATTERNS = [
     r"^Heading\s*(\d)$",           # English

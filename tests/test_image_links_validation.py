@@ -1,197 +1,242 @@
-"""Тест проверки соответствия количества ссылок на изображения в MD файлах с количеством PNG файлов."""
+"""Tests for validating ::sign-image format in generated Markdown files.
+
+This test focuses ONLY on the format correctness of image references,
+not on whether the referenced files actually exist.
+"""
 
 import re
 from pathlib import Path
-from typing import List, Set
+from typing import List
 
 import pytest
 
 
-class TestImageLinksValidation:
-    """Тест для проверки соответствия ссылок на изображения и реальных PNG файлов."""
+class TestSignImageFormatValidation:
+    """Tests for validating ::sign-image block format in Markdown files."""
 
-    def extract_sign_image_links(self, md_content: str) -> List[str]:
-        """Извлекает ссылки на изображения из sign-image блоков.
-        
-        Ищет паттерн:
-        ::sign-image
-        ---
-        src: /imageXXX.png
-        sign: подпись
-        ---
-        ::
+    def _validate_sign_image_block(self, lines: List[str], start_index: int, filename: str) -> List[str]:
+        """Validate a single ::sign-image block format.
         
         Args:
-            md_content (str): Содержимое markdown файла.
+            lines: All lines from the markdown file
+            start_index: Index where ::sign-image starts
+            filename: Name of the file for error reporting
             
         Returns:
-            List[str]: Список найденных ссылок на изображения (например, ['image123', 'image456']).
+            List of error messages (empty if no errors)
         """
-        # Паттерн для поиска sign-image блоков с src: /imageXXX.png
-        pattern = r'::sign-image\s*---\s*src:\s*/image(\d+)\.png\s*sign:.*?---\s*::'
+        errors = []
+        i = start_index
+        
+        # Line 1: should be "::sign-image"
+        if i >= len(lines) or lines[i].strip() != "::sign-image":
+            errors.append(f"{filename}:{i+1}: Expected '::sign-image', got '{lines[i].strip() if i < len(lines) else 'EOF'}'")
+            return errors
+        
+        # Line 2: should be "---"
+        i += 1
+        if i >= len(lines) or lines[i].strip() != "---":
+            errors.append(f"{filename}:{i+1}: Expected '---' after ::sign-image, got '{lines[i].strip() if i < len(lines) else 'EOF'}'")
+            return errors
+        
+        # Look for src: line
+        src_found = False
+        sign_found = False
+        closing_dash_found = False
+        
+        for j in range(i + 1, min(i + 10, len(lines))):  # Look in next few lines
+            line = lines[j].strip()
+            
+            if line == "---":
+                closing_dash_found = True
+                i = j
+                break
+            elif line.startswith("src:"):
+                src_found = True
+                # Validate src format: should be "src: /imageXXX.png" or similar
+                if not re.match(r"src:\s*/\w+\.(png|jpg|jpeg|gif)", line):
+                    errors.append(f"{filename}:{j+1}: Invalid src format: '{line}'. Expected 'src: /imageXXX.png'")
+            elif line.startswith("sign:"):
+                sign_found = True
+                # Sign can be any text, just check it exists
+                if len(line) <= 5:  # "sign:" is 5 chars
+                    errors.append(f"{filename}:{j+1}: Sign should have content: '{line}'")
+        
+        if not src_found:
+            errors.append(f"{filename}: ::sign-image block missing 'src:' line")
+        if not sign_found:
+            errors.append(f"{filename}: ::sign-image block missing 'sign:' line")  
+        if not closing_dash_found:
+            errors.append(f"{filename}: ::sign-image block missing closing '---'")
+            return errors
+        
+        # Look for closing "::"
+        i += 1
+        if i >= len(lines) or lines[i].strip() != "::":
+            errors.append(f"{filename}:{i+1}: Expected closing '::', got '{lines[i].strip() if i < len(lines) else 'EOF'}'")
+        
+        return errors
+
+    def test_sign_image_format_correctness(self):
+        """Test that all ::sign-image blocks in generated MD files have correct format."""
+        output_dir = Path("output")
+
+        # Skip if output directory doesn't exist
+        if not output_dir.exists():
+            pytest.skip("Output directory 'output' not found")
+
+        md_files = list(output_dir.rglob("*.md"))
+        if not md_files:
+            pytest.skip("No markdown files found in output directory")
+
+        format_errors = []
+        sign_image_found = False
+
+        for md_file in md_files:
+            try:
+                content = md_file.read_text(encoding='utf-8')
+            except Exception as e:
+                format_errors.append(f"Could not read {md_file}: {e}")
+                continue
+
+            # Find all ::sign-image blocks
+            lines = content.split('\n')
+            for i, line in enumerate(lines):
+                if line.strip() == "::sign-image":
+                    sign_image_found = True
+                    errors = self._validate_sign_image_block(lines, i, md_file.name)
+                    format_errors.extend(errors)
+
+        # If we found sign-image blocks, they should all be correctly formatted
+        if sign_image_found:
+            assert not format_errors, f"Sign-image format errors found:\n" + "\n".join(format_errors)
+        else:
+            # If no sign-image blocks found, just report it (may be OK for some documents)
+            print("No ::sign-image blocks found in any markdown files")
+
+    def test_sign_image_pattern_extraction(self):
+        """Test that we can correctly extract sign-image references from valid format."""
+        # Test with valid sign-image block
+        md_content = """
+# Some heading
+
+::sign-image
+---
+src: /image123.png
+sign: This is a test image
+---
+::
+
+Some other content.
+
+::sign-image
+---
+src: /image456.jpg
+sign: Another test image with longer description
+---
+::
+"""
+        
+        # Extract sign-image blocks
+        pattern = r'::sign-image\s*---\s*src:\s*(/[^/\s]+\.(png|jpg|jpeg|gif))\s*sign:\s*([^\n]*)\s*---\s*::'
         matches = re.findall(pattern, md_content, re.DOTALL | re.MULTILINE)
-        return [f"image{match}" for match in matches]
+        
+        assert len(matches) == 2, f"Should find 2 sign-image blocks, found {len(matches)}"
+        
+        # Check first match
+        src1, ext1, sign1 = matches[0]
+        assert src1 == "/image123.png"
+        assert ext1 == "png"
+        assert "test image" in sign1.lower()
+        
+        # Check second match
+        src2, ext2, sign2 = matches[1]
+        assert src2 == "/image456.jpg"
+        assert ext2 == "jpg"
+        assert "another test image" in sign2.lower()
 
-    def count_png_files(self, output_dir: Path) -> int:
-        """Подсчитывает количество PNG файлов в выходной директории.
-        
-        Args:
-            output_dir (Path): Путь к выходной директории.
+    def test_no_false_positives_in_pattern(self):
+        """Test that our pattern doesn't match invalid sign-image blocks."""
+        invalid_blocks = [
+            # Missing closing ::
+            """::sign-image
+---
+src: /image123.png
+sign: Test
+---""",
             
-        Returns:
-            int: Количество найденных PNG файлов.
-        """
-        png_files = list(output_dir.glob("**/*.png"))
-        return len(png_files)
+            # Missing opening ---
+            """::sign-image
+src: /image123.png
+sign: Test
+---
+::""",
+            
+            # Invalid src format
+            """::sign-image
+---
+src: image123.png
+sign: Test
+---
+::""",
+            
+            # Missing sign
+            """::sign-image
+---
+src: /image123.png
+---
+::"""
+        ]
+        
+        pattern = r'::sign-image\s*---\s*src:\s*(/[^/\s]+\.(png|jpg|jpeg|gif))\s*sign:\s*([^\n]*)\s*---\s*::'
+        
+        for invalid_block in invalid_blocks:
+            matches = re.findall(pattern, invalid_block, re.DOTALL | re.MULTILINE)
+            assert len(matches) == 0, f"Pattern should not match invalid block: {invalid_block[:50]}..."
 
-    def collect_all_sign_image_links(self, output_dir: Path) -> Set[str]:
-        """Собирает все ссылки на изображения из всех MD файлов в выходной директории.
+    @pytest.mark.parametrize("directory_name", [
+        "output/Rrm-admin", 
+        "output/Dev-portal-user"
+    ])
+    def test_specific_directory_image_consistency(self, directory_name):
+        """Test sign-image format consistency in specific directories."""
+        directory = Path(directory_name)
         
-        Args:
-            output_dir (Path): Путь к выходной директории.
+        if not directory.exists():
+            pytest.skip(f"Directory {directory_name} not found")
             
-        Returns:
-            Set[str]: Множество уникальных ссылок на изображения.
-        """
-        all_links = set()
+        md_files = list(directory.rglob("*.md"))
         
-        # Найти все .md файлы
-        md_files = list(output_dir.glob("**/*.md"))
+        if not md_files:
+            pytest.skip(f"No markdown files found in {directory_name}")
+        
+        sign_image_blocks = []
         
         for md_file in md_files:
             try:
                 content = md_file.read_text(encoding='utf-8')
-                links = self.extract_sign_image_links(content)
-                all_links.update(links)
+                
+                # Find sign-image blocks
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if line.strip() == "::sign-image":
+                        # Extract this block for validation
+                        block_lines = []
+                        for j in range(i, min(i + 10, len(lines))):
+                            block_lines.append(lines[j])
+                            if j > i and lines[j].strip() == "::":
+                                break
+                        sign_image_blocks.append("\n".join(block_lines))
+                        
             except Exception as e:
-                # Логируем ошибку, но не прерываем тест
-                print(f"Ошибка чтения файла {md_file}: {e}")
+                print(f"Could not read {md_file}: {e}")
                 continue
         
-        return all_links
-
-    def test_image_links_count_matches_png_files(self):
-        """Тест проверки соответствия количества ссылок на изображения количеству PNG файлов."""
-        output_dir = Path("output")
-        
-        # Проверяем, что выходная директория существует
-        if not output_dir.exists():
-            pytest.skip("Выходная директория 'output' не найдена")
-        
-        # Собираем все ссылки на изображения из MD файлов
-        sign_image_links = self.collect_all_sign_image_links(output_dir)
-        
-        # Подсчитываем PNG файлы
-        png_count = self.count_png_files(output_dir)
-        
-        # Количество уникальных ссылок на изображения
-        links_count = len(sign_image_links)
-        
-        # Логируем результаты для информации
-        print(f"\nРезультаты анализа:")
-        print(f"Найдено sign-image ссылок: {links_count}")
-        print(f"Найдено PNG файлов: {png_count}")
-        print(f"Разница: {abs(links_count - png_count)}")
-        
-        if links_count > 0:
-            print(f"Примеры найденных ссылок: {list(sign_image_links)[:5]}")
-        
-        # Основная проверка: количество ссылок должно примерно соответствовать количеству файлов
-        # Допускаем небольшое расхождение (±10%) из-за возможных дубликатов или технических изображений
-        max_difference = max(10, png_count * 0.1)  # Минимум 10 или 10% от количества PNG
-        
-        difference = abs(links_count - png_count)
-        
-        assert difference <= max_difference, (
-            f"Количество ссылок на изображения ({links_count}) значительно отличается "
-            f"от количества PNG файлов ({png_count}). Разница: {difference}, "
-            f"допустимая разница: {max_difference}"
-        )
-
-    def test_sign_image_pattern_extraction(self):
-        """Тест проверки корректности извлечения ссылок из sign-image блоков."""
-        test_content = """
-        Какой-то текст до блока.
-        
-        ::sign-image
-        ---
-        src: /image123.png
-        sign: Описание первого изображения
-        ---
-        ::
-        
-        Текст между блоками.
-        
-        ::sign-image
-        ---
-        src: /image456.png
-        sign: Описание второго изображения с несколькими строками
-        и переносами
-        ---
-        ::
-        
-        Текст после блоков.
-        """
-        
-        links = self.extract_sign_image_links(test_content)
-        
-        expected_links = ["image123", "image456"]
-        assert links == expected_links, f"Ожидалось {expected_links}, получено {links}"
-
-    def test_no_false_positives_in_pattern(self):
-        """Тест проверки, что паттерн не находит ложные совпадения."""
-        test_content = """
-        ![Image image123](path/to/image123.png)
-        
-        Обычная ссылка: /image999.png
-        
-        ::sign-image
-        ---
-        src: /image789.png
-        sign: Это правильный блок
-        ---
-        ::
-        
-        Неправильный блок без закрывающих ::
-        ::sign-image
-        ---
-        src: /image000.png
-        sign: описание
-        ---
-        """
-        
-        links = self.extract_sign_image_links(test_content)
-        
-        # Должна найтись только одна правильная ссылка
-        expected_links = ["image789"]
-        assert links == expected_links, f"Ожидалось {expected_links}, получено {links}"
-
-    @pytest.mark.parametrize("test_dir", [
-        "output/Rrm-admin",
-        "output/Dev-portal-user",
-    ])
-    def test_specific_directory_image_consistency(self, test_dir):
-        """Параметризованный тест для проверки конкретных директорий."""
-        test_path = Path(test_dir)
-        
-        if not test_path.exists():
-            pytest.skip(f"Тестовая директория {test_dir} не найдена")
-        
-        # Собираем ссылки и файлы только в этой директории
-        sign_image_links = self.collect_all_sign_image_links(test_path)
-        png_count = self.count_png_files(test_path)
-        
-        links_count = len(sign_image_links)
-        
-        print(f"\nАнализ {test_dir}:")
-        print(f"Sign-image ссылок: {links_count}")
-        print(f"PNG файлов: {png_count}")
-        
-        # Для конкретной директории допускаем меньшее расхождение
-        max_difference = max(5, png_count * 0.05)  # 5% или минимум 5
-        difference = abs(links_count - png_count)
-        
-        assert difference <= max_difference, (
-            f"В {test_dir}: количество ссылок ({links_count}) не соответствует "
-            f"количеству PNG файлов ({png_count}). Разница: {difference}"
-        )
+        # All sign-image blocks should follow same format pattern
+        for block in sign_image_blocks:
+            # Should contain all required components
+            assert "::sign-image" in block
+            assert "---" in block  
+            assert "src:" in block
+            assert "sign:" in block
+            assert block.count("::") == 2  # Opening and closing

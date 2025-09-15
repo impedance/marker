@@ -31,85 +31,20 @@ from core.model.internal_doc import (
 )
 from core.model.resource_ref import ResourceRef
 
-NS = {
-    'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
-    'rel': 'http://schemas.openxmlformats.org/package/2006/relationships'
-}
+# Import shared constants and utilities
+from core.utils.xml_constants import NS, DEFAULT_HEADING_PATTERNS
+from core.utils.text_processing import clean_heading_text, extract_heading_number_and_title
+from core.utils.docx_utils import read_docx_part, styles_map, heading_level, style_num_map, numbering_formats
 
-DEFAULT_HEADING_PATTERNS = [
-    r"^Heading\s*(\d)$",           # English
-    r"^Заголовок\s*(\d)$",         # Russian exact
-    r".*Заголовок\s*(\d)$",        # Russian with prefixes like 'ROSA_Заголовок 1'
-    r"^Titre\s*(\d)$",             # French
-    r"^Überschrift\s*(\d)$",       # German
-    r"^Encabezado\s*(\d)$",        # Spanish
-    r".*\bheading\s*(\d)$",        # fallback lowercase '... heading 2'
-]
+# Use shared utility read_docx_part instead of local _read function
 
-def _read(z: zipfile.ZipFile, name: str) -> bytes | None:
-    return z.read(name) if name in z.namelist() else None
+# Function moved to core.utils.text_processing
 
-def _clean_heading_text(text: str) -> str:
-    """Remove numbering prefixes like '1', '1.2', '1.2.3', optional dots/brackets/dashes.
+# Function moved to core.utils.docx_utils
 
-    Examples:
-    - "3.7 Настройка" -> "Настройка"
-    - "3.4.3 — Функции" -> "Функции"
-    - "1) Введение" -> "Введение"
-    - "(2.1) - Описание" -> "Описание"
-    """
-    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+)\.?\)?\s*(?:[-–—]\s*)?"
-    return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+# Function moved to core.utils.docx_utils
 
-def _styles_map(styles_xml: bytes | None) -> Dict[str, str]:
-    """Map styleId -> human-readable name from styles.xml."""
-    if not styles_xml: return {}
-    root = ET.fromstring(styles_xml)
-    out: Dict[str, str] = {}
-    for s in root.findall(".//w:style", NS):
-        sid = s.attrib.get(f"{{{NS['w']}}}styleId")
-        name_el = s.find("w:name", NS)
-        name = name_el.attrib.get(f"{{{NS['w']}}}val") if name_el is not None else sid
-        if sid: out[sid] = name
-    return out
-
-def _style_num_map(styles_xml: bytes | None) -> Dict[str, str]:
-    """Map styleId -> numId for list styles."""
-    if not styles_xml:
-        return {}
-    root = ET.fromstring(styles_xml)
-    out: Dict[str, str] = {}
-    for s in root.findall(".//w:style", NS):
-        sid = s.attrib.get(f"{{{NS['w']}}}styleId")
-        numPr = s.find("w:pPr/w:numPr", NS)
-        if sid and numPr is not None:
-            numId = numPr.find("w:numId", NS)
-            if numId is not None:
-                out[sid] = numId.attrib.get(f"{{{NS['w']}}}val", "")
-    return out
-
-def _numbering_formats(numbering_xml: bytes | None) -> Dict[str, str]:
-    """Map numId -> numFmt (e.g., bullet, decimal)."""
-    if not numbering_xml:
-        return {}
-    root = ET.fromstring(numbering_xml)
-    abstract_map: Dict[str, str] = {}
-    for abs_num in root.findall("w:abstractNum", NS):
-        abs_id = abs_num.attrib.get(f"{{{NS['w']}}}abstractNumId")
-        lvl = abs_num.find("w:lvl", NS)
-        if abs_id and lvl is not None:
-            fmt_el = lvl.find("w:numFmt", NS)
-            if fmt_el is not None:
-                abstract_map[abs_id] = fmt_el.attrib.get(f"{{{NS['w']}}}val", "")
-    out: Dict[str, str] = {}
-    for num in root.findall("w:num", NS):
-        num_id = num.attrib.get(f"{{{NS['w']}}}numId")
-        abs_id_el = num.find("w:abstractNumId", NS)
-        abs_id = abs_id_el.attrib.get(f"{{{NS['w']}}}val", "") if abs_id_el is not None else ""
-        if num_id and abs_id in abstract_map:
-            out[num_id] = abstract_map[abs_id]
-    return out
+# Function moved to core.utils.docx_utils
 
 def _paragraph_list_type(p: ET.Element, style_nums: Dict[str, str], num_fmts: Dict[str, str]) -> str | None:
     """Return list format if paragraph is part of a list."""
@@ -203,7 +138,7 @@ def _text_with_numbering(p: ET.Element) -> str:
     if auto_number:
         # Remove the numbering from the text if it's duplicated
         text = _text_of(p)
-        number, title = _extract_heading_number_and_title(text)
+        number, title = extract_heading_number_and_title(text)
         if number:  # If text already has numbering, use the text as-is
             return text
         else:  # Add the automatic numbering to clean text
@@ -222,61 +157,9 @@ def _text_with_numbering(p: ET.Element) -> str:
     
     return text
 
-def _extract_heading_number_and_title(text: str) -> tuple[str, str]:
-    """Extract chapter number and title from heading text.
-    
-    Args:
-        text: Full heading text (e.g., "4.1.3 Installation and Setup")
-        
-    Returns:
-        tuple of (number, title) where number might be empty if no numbering found
-    """
-    # Pattern to match various numbering formats
-    number_patterns = [
-        r'^(\d+(?:\.\d+)*)\s+(.+)$',  # "4.1.3 Title" or "2.1 Title" or "2 Title"
-        r'^(\d+(?:\.\d+)*)\.\s+(.+)$',  # "4.1.3. Title" 
-        r'^(\d+(?:\.\d+)*)\s*[-–—]\s*(.+)$',  # "4.1.3 - Title" or "4.1.3 – Title"
-    ]
-    
-    for pattern in number_patterns:
-        match = re.match(pattern, text.strip())
-        if match:
-            return match.group(1), match.group(2).strip()
-    
-    # No numbering found, return empty number and full text as title
-    return "", text
+# Function moved to core.utils.text_processing
 
-def _heading_level(p: ET.Element, styles_map: Dict[str,str], heading_patterns: List[str]) -> int | None:
-    """Return heading level (1..9) or None if not a heading."""
-    pPr = p.find("w:pPr", NS)
-    if pPr is None:
-        return None
-    # Prefer outlineLvl when present
-    outline = pPr.find("w:outlineLvl", NS)
-    if outline is not None:
-        val = outline.attrib.get(f"{{{NS['w']}}}val")
-        if val is not None:
-            try:
-                return int(val) + 1  # outlineLvl 0 => H1
-            except ValueError:
-                pass
-    # Fallback: paragraph style name
-    pStyle = pPr.find("w:pStyle", NS)
-    if pStyle is not None:
-        sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
-        sname = styles_map.get(sid, sid) or sid
-        for pat in heading_patterns:
-            m = re.match(pat, sname, flags=re.IGNORECASE)
-            if m:
-                try:
-                    return int(m.group(1))
-                except ValueError:
-                    continue
-        # Also try styleId like Heading1
-        m = re.match(r"^Heading(\d)$", sid, flags=re.IGNORECASE)
-        if m:
-            return int(m.group(1))
-    return None
+# Function moved to core.utils.docx_utils
 
 def _slug(text: str, maxlen: int = 80) -> str:
     s = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE)
@@ -354,7 +237,7 @@ def _get_mime_type_from_extension(ext: str) -> str:
     return mime_types.get(ext, 'application/octet-stream')
 
 def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
-                             all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> List[Image]:
+                             all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> List[Image]:
     """Find all images referenced in a paragraph and return Image blocks with captions."""
     images = []
     
@@ -370,7 +253,7 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
                     resource_ref = media_images[full_path]
                     
                     # Find caption for this image
-                    caption = _find_caption_for_image(p, all_paragraphs, styles_map)
+                    caption = _find_caption_for_image(p, all_paragraphs, style_map)
                     
                     # Create Image block
                     image = Image(
@@ -383,7 +266,7 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
     return images
 
 
-def _is_caption_paragraph(p: ET.Element, styles_map: Dict[str, str]) -> bool:
+def _is_caption_paragraph(p: ET.Element, style_map: Dict[str, str]) -> bool:
     """Check if paragraph contains an image caption."""
     # Strategy 1: Check style names
     style_id = ""
@@ -393,7 +276,7 @@ def _is_caption_paragraph(p: ET.Element, styles_map: Dict[str, str]) -> bool:
         if pStyle is not None:
             style_id = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
     
-    style_name = styles_map.get(style_id, "").lower()
+    style_name = style_map.get(style_id, "").lower()
     
     # Known caption style patterns
     caption_style_patterns = [
@@ -456,7 +339,7 @@ def _find_seq_picnum_in_paragraph(p: ET.Element) -> str:
     return ""
 
 
-def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> str:
+def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> str:
     """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text."""
     try:
         img_index = all_paragraphs.index(image_para)
@@ -479,7 +362,7 @@ def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Elem
             if next_index < len(all_paragraphs):
                 next_para = all_paragraphs[next_index]
                 
-                if _is_caption_paragraph(next_para, styles_map):
+                if _is_caption_paragraph(next_para, style_map):
                     caption_text = _extract_text_from_paragraph(next_para).strip()
                     if caption_text:
                         break
@@ -507,7 +390,7 @@ def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Elem
     return ""
 
 def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
-                all_paragraphs: List[ET.Element], styles_map: Dict[str, str]) -> Table:
+                all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> Table:
     """Convert a DOCX table element into a Table block."""
     rows = tbl.findall('w:tr', NS)
     if not rows:
@@ -518,7 +401,7 @@ def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: D
         for tc in tr.findall('w:tc', NS):
             blocks: List[Block] = []
             for p in tc.findall('w:p', NS):
-                images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, styles_map)
+                images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
                 for img in images:
                     blocks.append(img)
                 text = _text_of(p)
@@ -547,12 +430,12 @@ def split_docx_by_h1(
     out_root.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(docx_path) as z:
-        doc_xml = _read(z, "word/document.xml")
-        styles_xml = _read(z, "word/styles.xml")
+        doc_xml = read_docx_part(z, "word/document.xml")
+        styles_xml = read_docx_part(z, "word/styles.xml")
     if not doc_xml:
         raise RuntimeError("word/document.xml not found")
 
-    styles_map = _styles_map(styles_xml)
+    style_map = styles_map(styles_xml)
     body = ET.fromstring(doc_xml).find(".//w:body", NS)
     if body is None:
         raise RuntimeError("No <w:body> found")
@@ -563,7 +446,7 @@ def split_docx_by_h1(
     current = {"title": "front-matter", "lines": []}  # content before first H1
 
     for p in body.findall("w:p", NS):
-        lvl = _heading_level(p, styles_map, patterns)
+        lvl = heading_level(p, style_map, patterns)
         if lvl:
             # For headings, use numbering-aware text extraction
             t = _text_with_numbering(p)
@@ -575,13 +458,13 @@ def split_docx_by_h1(
             # Start new chapter
             if current["lines"]:
                 sections.append(current)
-            clean_t = _clean_heading_text(t)
+            clean_t = clean_heading_text(t)
             current = {"title": clean_t, "lines": [f"# {clean_t}\n"]}
         else:
             if t:
                 if lvl:
                     new_lvl = max(1, lvl - 1)
-                    clean_t = _clean_heading_text(t)
+                    clean_t = clean_heading_text(t)
                     current["lines"].append(f"{'#'*new_lvl} {clean_t}\n")
                 else:
                     current["lines"].append(t + "\n")
@@ -617,10 +500,10 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     numbered_headings = extract_headings_with_numbers(str(docx_path))
     
     with zipfile.ZipFile(docx_path) as z:
-        doc_xml = _read(z, "word/document.xml")
-        styles_xml = _read(z, "word/styles.xml")
-        rels_xml = _read(z, "word/_rels/document.xml.rels")
-        numbering_xml = _read(z, "word/numbering.xml")
+        doc_xml = read_docx_part(z, "word/document.xml")
+        styles_xml = read_docx_part(z, "word/styles.xml")
+        rels_xml = read_docx_part(z, "word/_rels/document.xml.rels")
+        numbering_xml = read_docx_part(z, "word/numbering.xml")
         
         # Extract images from media directory and create ResourceRef objects
         media_images = _extract_images_from_media(z)
@@ -628,9 +511,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     if not doc_xml:
         raise RuntimeError("word/document.xml not found")
     
-    styles_map = _styles_map(styles_xml)
-    style_nums = _style_num_map(styles_xml)
-    num_fmts = _numbering_formats(numbering_xml)
+    style_map = styles_map(styles_xml)
+    style_nums = style_num_map(styles_xml)
+    num_fmts = numbering_formats(numbering_xml)
     relationships = _load_relationships(rels_xml)
     body = ET.fromstring(doc_xml).find(".//w:body", NS)
     if body is None:
@@ -694,7 +577,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         if pStyle is None:
             return ""
         sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
-        return styles_map.get(sid, sid) or sid
+        return style_map.get(sid, sid) or sid
 
     def _has_gray_shading(p: ET.Element) -> bool:
         def has_shading(el: ET.Element | None) -> bool:
@@ -742,10 +625,10 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     for el in list(body):
         if el.tag == f"{{{NS['w']}}}p":
             p = el
-            lvl = _heading_level(p, styles_map, patterns)
+            lvl = heading_level(p, style_map, patterns)
             text = _text_of(p)
             list_type = _paragraph_list_type(p, style_nums, num_fmts)
-            paragraph_images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, styles_map)
+            paragraph_images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
             for image in paragraph_images:
                 blocks.append(image)
             if text:
@@ -846,7 +729,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         elif el.tag == f"{{{NS['w']}}}tbl":
             # If a code block was open before a table, flush it
             flush_code()
-            table_block = _parse_table(el, relationships, media_images, all_paragraphs, styles_map)
+            table_block = _parse_table(el, relationships, media_images, all_paragraphs, style_map)
             blocks.append(table_block)
     # Flush any pending code block at the end
     flush_code()
