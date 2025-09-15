@@ -49,16 +49,14 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
         return text
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
-        if block.caption:
-            # Use resource_id as the image filename (e.g., "image2" -> "/image2.png")
-            # This matches the actual filenames extracted from DOCX
-            return (f"::sign-image\n"
-                   f"---\n"
-                   f"src: /{block.resource_id}.png\n"
-                   f"sign: {block.caption}\n"
-                   f"---\n"
-                   f"::")
-        return f"![{block.alt}]({path})"
+        # Always use ::sign-image format for all images
+        sign_text = block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
+        return (f"::sign-image\n"
+               f"---\n"
+               f"src: /{block.resource_id}.png\n"
+               f"sign: {sign_text}\n"
+               f"---\n"
+               f"::")
     if type == "code":
         info = []
         if block.language:
