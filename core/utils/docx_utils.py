@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from xml.etree import ElementTree as ET
 
 from .xml_constants import NS, DEFAULT_HEADING_PATTERNS
+from core.numbering.heading_numbering import SERVICE_HEADINGS
 
 
 def read_docx_part(zip_file: zipfile.ZipFile, part_name: str) -> Optional[bytes]:
@@ -61,6 +62,17 @@ def heading_level(paragraph: ET.Element, style_map: Dict[str, str],
     if heading_patterns is None:
         heading_patterns = DEFAULT_HEADING_PATTERNS
         
+    # Filter out known service headings by their text content (e.g., "Содержание")
+    try:
+        full_text = "".join((t.text or "") for t in paragraph.findall(".//w:t", NS)).strip()
+    except Exception:
+        full_text = ""
+    if full_text:
+        # Remove leading numbering like 1, 1.2, 1.2.3., optional dot and spaces
+        cleaned_text = re.sub(r'^\d+(?:\.\d+)*\.?\s*', '', full_text).strip().lower()
+        if cleaned_text in SERVICE_HEADINGS:
+            return None
+
     pPr = paragraph.find("w:pPr", NS)
     if pPr is None:
         return None

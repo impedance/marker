@@ -373,7 +373,7 @@ def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Elem
                     
                 # If paragraph has significant content but isn't a caption, stop
                 text = _extract_text_from_paragraph(next_para).strip()
-                if len(text) > 50 and not _is_caption_paragraph(next_para, styles_map):
+                if len(text) > 50 and not _is_caption_paragraph(next_para, style_map):
                     break
         
         # Combine figure number and caption text
