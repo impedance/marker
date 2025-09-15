@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 
 from ..adapters.document_parser import parse_document
 from ..render.markdown_renderer import render_markdown
-from ..render.assets_exporter import export_assets
+from ..render.assets_exporter import AssetsExporter
 from .writer import Writer
 
 _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
@@ -276,7 +276,7 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
     └── section2_dir/
         └── index.md (references ../images/section2_name/...)
     """
-    from ..render.assets_exporter import export_assets
+    from ..render.assets_exporter import AssetsExporter
     
     writer = Writer()
     out_root = Path(out_root)
@@ -290,64 +290,15 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
     
     doc, resources = parse_document(str(docx_path))
     
-    # Create centralized images directory
+    # Use new hierarchical assets exporter
     central_images_dir = doc_root / "images"
-    
-    # Export assets to temporary location first
-    temp_assets_dir = doc_root / "temp_assets"
-    temp_asset_map = export_assets(resources, str(temp_assets_dir)) if resources else {}
+    exporter = AssetsExporter(central_images_dir)
+    final_asset_map = exporter.export_hierarchical_images(doc, resources)
     
     sections = _collect_sections(doc.blocks)
     written: List[Path] = []
     
-    # First pass: collect all sections and their images to plan the structure
-    section_images = {}  # section_code -> list of resource_ids
-    section_names = {}   # section_code -> section_title
-    
-    for sec in sections:
-        code = _code_for_levels(sec.number)
-        safe_title = _clean_filename(sec.title)
-        section_names[code] = safe_title
-        
-        # Find image resource IDs used in this section
-        used_images = []
-        for block in sec.blocks:
-            if getattr(block, "type", None) == "image":
-                resource_id = getattr(block, "resource_id", None)
-                if resource_id:
-                    used_images.append(resource_id)
-        
-        if used_images:
-            section_images[code] = used_images
-    
-    # Create section-specific image directories and copy files
-    final_asset_map = {}
-    
-    for section_code, image_ids in section_images.items():
-        section_title = section_names[section_code]
-        sanitized_title = _sanitize_dir_name(f"{section_code}.{section_title}")
-        section_image_dir = central_images_dir / sanitized_title
-        writer.ensure_dir(section_image_dir)
-        
-        # Copy images for this section
-        for resource_id in image_ids:
-            if resource_id in temp_asset_map:
-                temp_relative_path = temp_asset_map[resource_id]
-                temp_file_path = temp_assets_dir / Path(temp_relative_path).name
-                
-                if temp_file_path.exists():
-                    # Determine file extension from temp asset map
-                    filename = Path(temp_relative_path).name
-                    target_file = section_image_dir / filename
-                    
-                    # Copy file
-                    import shutil
-                    shutil.copy2(temp_file_path, target_file)
-                    
-                    # Update final asset map with new path
-                    final_asset_map[resource_id] = f"images/{sanitized_title}/{filename}"
-    
-    # Second pass: generate markdown files using the centralized asset map
+    # Generate markdown files using the hierarchical asset map
     h1_dir: Optional[Path] = None
     last_h1_num: Optional[int] = None
     
@@ -392,10 +343,5 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
                 path = doc_root / f"{fallback_code}.{safe_title}.md"
             writer.write_text(path, md)
             written.append(path)
-    
-    # Clean up temporary assets directory
-    if temp_assets_dir.exists():
-        import shutil
-        shutil.rmtree(temp_assets_dir)
     
     return written

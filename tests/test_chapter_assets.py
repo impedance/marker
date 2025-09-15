@@ -84,7 +84,7 @@ class TestChapterAssetsExport:
         
         # Check chapter-specific directories
         annotation_dir = images_dir / "АННОТАЦИЯ"
-        api_dir = images_dir / "130000.API"
+        api_dir = images_dir / "API"  # Numeric prefix removed
         
         assert annotation_dir.exists()
         assert api_dir.exists()
@@ -96,8 +96,8 @@ class TestChapterAssetsExport:
         
         # Verify asset_map has correct paths
         assert asset_map["img1"] == "images/АННОТАЦИЯ/img1.png"
-        assert asset_map["img2"] == "images/130000.API/img2.jpg"
-        assert asset_map["img3"] == "images/130000.API/img3.png"
+        assert asset_map["img2"] == "images/API/img2.jpg"  # Numeric prefix removed
+        assert asset_map["img3"] == "images/API/img3.png"  # Numeric prefix removed
     
     def test_export_assets_handles_duplicate_resources(
         self, sample_chapters, temp_output_dir

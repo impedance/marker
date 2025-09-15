@@ -1,10 +1,10 @@
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 from core.model.resource_ref import ResourceRef
-from core.model.internal_doc import InternalDoc, Image
+from core.model.internal_doc import InternalDoc, Image, Heading
 
 # A simple map to get file extensions from mime types
 MIME_TYPE_EXTENSIONS = {
@@ -125,6 +125,7 @@ def export_assets_by_chapter(
 def _sanitize_filename(name: str) -> str:
     """
     Sanitize a string to be safe for use as a directory name.
+    Removes numeric prefixes from folder names for images directory.
     
     Args:
         name: The original name string.
@@ -132,6 +133,9 @@ def _sanitize_filename(name: str) -> str:
     Returns:
         A sanitized string safe for directory names.
     """
+    # Remove numeric prefixes like "01000.", "12345.", "1 ", "2 ", etc.
+    name = re.sub(r'^\d+(\.\d+)*\.?\s*', '', name)
+    
     # Remove or replace problematic characters
     sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
     # Remove leading/trailing whitespace and dots
@@ -144,3 +148,166 @@ def _sanitize_filename(name: str) -> str:
         sanitized = "unnamed"
     
     return sanitized
+
+
+class AssetsExporter:
+    """Handles exporting assets with different organizational strategies."""
+    
+    def __init__(self, assets_dir: Path):
+        self.assets_dir = Path(assets_dir)
+        self.hashes_written: Dict[str, str] = {}  # {sha256: relative_path}
+        
+    def export_hierarchical_images(self, doc: InternalDoc, resources: List[ResourceRef]) -> Dict[str, str]:
+        """
+        Export images organized in hierarchical folder structure without numeric prefixes.
+        
+        Creates structure like:
+        images/
+        ├── Section Name/
+        │   └── Subsection Name/
+        │       ├── image1.png
+        │       └── image2.jpg
+        
+        Args:
+            doc: The document containing hierarchical structure
+            resources: List of image resources to export
+            
+        Returns:
+            Dictionary mapping resource IDs to their relative file paths
+        """
+        asset_map: Dict[str, str] = {}
+        
+        # Build hierarchical structure from document
+        hierarchy = self._build_hierarchical_structure(doc)
+        
+        # Create resource mapping
+        resource_map = {r.id: r for r in resources}
+        
+        # Export each image to its hierarchical location
+        for resource_id, path_info in hierarchy.items():
+            if resource_id not in resource_map:
+                continue
+                
+            resource = resource_map[resource_id]
+            
+            # Check for duplicate content
+            if resource.sha256 in self.hashes_written:
+                asset_map[resource.id] = self.hashes_written[resource.sha256]
+                continue
+            
+            # Build hierarchical directory path
+            dir_parts = [self._sanitize_for_hierarchy(part) for part in path_info["path_parts"]]
+            target_dir = self.assets_dir
+            for part in dir_parts:
+                target_dir = target_dir / part
+            
+            # Ensure directory exists
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename (convert resource_id to image number + extension)
+            ext = MIME_TYPE_EXTENSIONS.get(resource.mime_type, "")
+            filename = self._convert_resource_id_to_filename(resource.id, ext)
+            target_path = target_dir / filename
+            
+            # Write file
+            with open(target_path, "wb") as f:
+                f.write(resource.content)
+            
+            # Build relative path for asset map
+            relative_parts = ["images"] + dir_parts + [filename]
+            relative_path = "/".join(relative_parts)
+            
+            # Store mappings
+            asset_map[resource.id] = relative_path
+            self.hashes_written[resource.sha256] = relative_path
+            
+        return asset_map
+    
+    def _build_hierarchical_structure(self, doc: InternalDoc) -> Dict[str, Dict]:
+        """
+        Build hierarchical structure mapping from document blocks.
+        
+        Returns:
+            Dict mapping resource_id to {"path_parts": [section, subsection, ...]}
+        """
+        hierarchy = {}
+        current_sections = []  # Stack of current section names by level
+        
+        for block in doc.blocks:
+            if isinstance(block, Heading):
+                # Update the sections stack based on heading level
+                level = block.level
+                title = self._clean_heading_text(block.text)
+                
+                # Truncate sections stack to current level-1
+                current_sections = current_sections[:level-1]
+                
+                # Add current heading at its level
+                if len(current_sections) == level - 1:
+                    current_sections.append(title)
+                else:
+                    # Fill gaps if needed
+                    while len(current_sections) < level - 1:
+                        current_sections.append("Unnamed")
+                    current_sections.append(title)
+                    
+            elif isinstance(block, Image) and block.resource_id:
+                # Assign image to current section path (minimum 2 levels for hierarchy)
+                if len(current_sections) >= 2:
+                    hierarchy[block.resource_id] = {
+                        "path_parts": current_sections[:2]  # Only take first 2 levels
+                    }
+                elif len(current_sections) == 1:
+                    # If only one level, create a default subsection
+                    hierarchy[block.resource_id] = {
+                        "path_parts": [current_sections[0], "Общее"]
+                    }
+                else:
+                    # No sections found, use default
+                    hierarchy[block.resource_id] = {
+                        "path_parts": ["Без раздела", "Общее"]
+                    }
+        
+        return hierarchy
+    
+    def _clean_heading_text(self, text: str) -> str:
+        """Clean heading text by removing numeric prefixes."""
+        # Remove numeric prefixes like "1.", "1.1", "12345.", etc.
+        cleaned = re.sub(r'^\d+(\.\d+)*\.?\s*', '', text)
+        return cleaned.strip() if cleaned.strip() else "Unnamed"
+    
+    def _sanitize_for_hierarchy(self, name: str) -> str:
+        """Sanitize name for use in directory hierarchy."""
+        # Remove or replace problematic characters
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
+        # Remove leading/trailing whitespace and dots
+        sanitized = sanitized.strip('. ')
+        # Limit length
+        if len(sanitized) > 80:
+            sanitized = sanitized[:80].rstrip('. ')
+        # Ensure it's not empty
+        if not sanitized:
+            sanitized = "Unnamed"
+        return sanitized
+    
+    def _convert_resource_id_to_filename(self, resource_id: str, extension: str) -> str:
+        """
+        Convert resource ID to a standard image filename.
+        
+        Examples: 
+            img1 -> image2.png (increment by 1)
+            special_image_41 -> image41.jpg
+            random_id -> random_id.png (fallback)
+        """
+        # Try to extract number from common patterns
+        number_match = re.search(r'(\d+)$', resource_id)
+        if number_match:
+            number = int(number_match.group(1))
+            # For img1, img2, etc., convert to image2, image3 (increment by 1)
+            if resource_id.startswith('img'):
+                return f"image{number + 1}{extension}"
+            else:
+                return f"image{number}{extension}"
+        
+        # Fallback: use resource_id as filename
+        return f"{resource_id}{extension}"

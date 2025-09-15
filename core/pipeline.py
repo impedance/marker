@@ -8,7 +8,7 @@ from core.model.config import PipelineConfig
 from core.output.writer import Writer
 from core.output.file_naming import generate_chapter_filename
 from core.output.toc_builder import build_index, build_manifest
-from core.render.assets_exporter import export_assets, export_assets_by_chapter
+from core.render.assets_exporter import AssetsExporter
 from core.render.markdown_renderer import render_markdown
 from core.split.chapter_splitter import split_into_chapters, ChapterRules
 from core.transforms.normalize import run as normalize
@@ -66,7 +66,12 @@ class DocumentPipeline:
             rules = ChapterRules(level=self.config.split_level)
             chapters = split_into_chapters(doc, rules)
 
-            # 4. Prepare chapter data for asset export
+            # 4. Export assets using hierarchical organization
+            images_dir = doc_output_dir / "images"
+            exporter = AssetsExporter(images_dir)
+            asset_map = exporter.export_hierarchical_images(doc, resources)
+            
+            # 5. Prepare chapter data
             chapter_data = []
             chapter_files = []
             chapter_info = []
@@ -84,11 +89,8 @@ class DocumentPipeline:
                 if not chapter_title:
                     chapter_title = f"Chapter {i}"
                 
-                # Store chapter data for asset export
+                # Store chapter data
                 chapter_data.append((chapter, chapter_title))
-                
-            # 5. Export assets using chapter-based organization
-            asset_map = export_assets_by_chapter(resources, chapter_data, str(doc_output_dir))
             
             # 6. Render markdown for each chapter and write files
             for i, (chapter, chapter_title) in enumerate(chapter_data):
