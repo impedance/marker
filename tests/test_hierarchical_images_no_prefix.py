@@ -73,19 +73,19 @@ class TestHierarchicalImagesNoPrefix:
         
         # Verify hierarchical structure without numeric prefixes
         # Level 1: Main sections
-        general_section = assets_dir / "Общие сведения"
-        portal_section = assets_dir / "Начало работы с порталом"
-        ui_section = assets_dir / "Компоненты пользовательского интерфейса"
+        general_section = assets_dir / "Obshchie-svedeniya"
+        portal_section = assets_dir / "Nachalo-raboty-s-portalom"
+        ui_section = assets_dir / "Komponenty-polzovatelskogo-interfeisa"
         
         assert general_section.exists()
         assert portal_section.exists()  
         assert ui_section.exists()
         
         # Level 2: Subsections
-        annotation_subsection = general_section / "АННОТАЦИЯ"
-        sipa_subsection = portal_section / "Установка СИПА"
-        rosa_subsection = portal_section / "Установка РОСА Центр Управления"
-        mobile_subsection = ui_section / "Интеграция с мобильными устройствами"
+        annotation_subsection = general_section / "Annotatsiya"
+        sipa_subsection = portal_section / "Ustanovka-sipa"
+        rosa_subsection = portal_section / "Ustanovka-rosa-tsentr-upravleniya"
+        mobile_subsection = ui_section / "Integratsiya-s-mobilnymi-ustroistvami"
         
         assert annotation_subsection.exists()
         assert sipa_subsection.exists()
@@ -124,11 +124,11 @@ class TestHierarchicalImagesNoPrefix:
         exporter.export_hierarchical_images(doc, resources)
         
         # Should NOT create directory for section without images
-        empty_section = assets_dir / "Раздел без изображений"
+        empty_section = assets_dir / "Razdel-bez-izobrazhenii"
         assert not empty_section.exists()
         
         # Should create directory for section with images
-        with_images = assets_dir / "Раздел с изображениями" / "Подраздел с изображением"
+        with_images = assets_dir / "Razdel-s-izobrazheniyami" / "Podrazdel-s-izobrazheniem"
         assert with_images.exists()
         assert (with_images / "image2.png").exists()  # img1 -> image2.png
     
@@ -152,7 +152,7 @@ class TestHierarchicalImagesNoPrefix:
         exporter.export_hierarchical_images(doc, resources)
         
         # Verify filename conversion (special_image_41 -> image41.jpg)
-        image_path = assets_dir / "Тест" / "Подтест" / "image41.jpg"
+        image_path = assets_dir / "Test" / "Podtest" / "image41.jpg"
         assert image_path.exists()
     
     def test_expected_cu_admin_install_structure(self, temp_output_dir):
@@ -198,7 +198,7 @@ class TestHierarchicalImagesNoPrefix:
         # │   └── Установка РОСА Центр Управления/
         # │       └── image5.png
         
-        assert (assets_dir / "Общие сведения" / "АННОТАЦИЯ" / "image2.png").exists()
-        assert (assets_dir / "Начало работы с порталом" / "Установка СИПА" / "image3.png").exists()
-        assert (assets_dir / "Начало работы с порталом" / "Установка СИПА" / "image4.png").exists()
-        assert (assets_dir / "Начало работы с порталом" / "Установка РОСА Центр Управления" / "image5.png").exists()
+        assert (assets_dir / "Obshchie-svedeniya" / "Annotatsiya" / "image2.png").exists()
+        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-sipa" / "image3.png").exists()
+        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-sipa" / "image4.png").exists()
+        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-rosa-tsentr-upravleniya" / "image5.png").exists()

@@ -13,6 +13,54 @@ MIME_TYPE_EXTENSIONS = {
     "image/gif": ".gif",
 }
 
+
+_RU_TRANS = {
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "i",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "kh",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "shch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
+}
+
+
+def _transliterate(text: str) -> str:
+    """Convert Cyrillic text to a slug-friendly Latin representation."""
+    text = text.lower()
+    result = "".join(_RU_TRANS.get(ch, ch) for ch in text)
+    result = re.sub(r"[^a-z0-9\s-]", "", result)
+    result = re.sub(r"\s+", "-", result.strip())
+    if result:
+        result = result[0].upper() + result[1:]
+    return result
+
 def export_assets(resources: List[ResourceRef], output_dir: str) -> Dict[str, str]:
     """
     Saves binary resources to disk, avoiding duplicates based on SHA256 hash.
@@ -89,8 +137,10 @@ def export_assets_by_chapter(
                 chapter_resources[chapter_title] = []
             chapter_resources[chapter_title].append(resource)
     
-    # Create base images directory
-    images_base_dir = Path(base_output_dir) / "images"
+    # Create base images directory named after document
+    base_path = Path(base_output_dir)
+    base_folder = base_path.name
+    images_base_dir = base_path / base_folder
     images_base_dir.mkdir(parents=True, exist_ok=True)
     
     # Process each chapter's resources
@@ -109,7 +159,7 @@ def export_assets_by_chapter(
             # Save new resource
             ext = MIME_TYPE_EXTENSIONS.get(resource.mime_type, "")
             filename = f"{resource.id}{ext}"
-            relative_path = f"images/{safe_chapter_name}/{filename}"
+            relative_path = f"{base_folder}/{safe_chapter_name}/{filename}"
             absolute_path = chapter_images_dir / filename
             
             with open(absolute_path, "wb") as f:
@@ -135,9 +185,9 @@ def _sanitize_filename(name: str) -> str:
     """
     # Remove numeric prefixes like "01000.", "12345.", "1 ", "2 ", etc.
     name = re.sub(r'^\d+(\.\d+)*\.?\s*', '', name)
-    
+
     # Remove or replace problematic characters
-    sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
+    sanitized = re.sub(r'[<>:"/\\|?*]', ' ', name)
     # Remove leading/trailing whitespace and dots
     sanitized = sanitized.strip('. ')
     # Limit length to avoid filesystem issues
@@ -146,8 +196,8 @@ def _sanitize_filename(name: str) -> str:
     # Ensure it's not empty
     if not sanitized:
         sanitized = "unnamed"
-    
-    return sanitized
+
+    return _transliterate(sanitized)
 
 
 class AssetsExporter:
@@ -162,7 +212,7 @@ class AssetsExporter:
         Export images organized in hierarchical folder structure without numeric prefixes.
         
         Creates structure like:
-        images/
+        {document}/
         ├── Section Name/
         │   └── Subsection Name/
         │       ├── image1.png
@@ -214,7 +264,7 @@ class AssetsExporter:
                 f.write(resource.content)
             
             # Build relative path for asset map
-            relative_parts = ["images"] + dir_parts + [filename]
+            relative_parts = [self.assets_dir.name] + dir_parts + [filename]
             relative_path = "/".join(relative_parts)
             
             # Store mappings
@@ -255,17 +305,15 @@ class AssetsExporter:
                 # Assign image to current section path (minimum 2 levels for hierarchy)
                 if len(current_sections) >= 2:
                     hierarchy[block.resource_id] = {
-                        "path_parts": current_sections[:2]  # Only take first 2 levels
+                        "path_parts": current_sections[:2]
                     }
                 elif len(current_sections) == 1:
-                    # If only one level, create a default subsection
                     hierarchy[block.resource_id] = {
-                        "path_parts": [current_sections[0], "Общее"]
+                        "path_parts": [current_sections[0]]
                     }
                 else:
-                    # No sections found, use default
                     hierarchy[block.resource_id] = {
-                        "path_parts": ["Без раздела", "Общее"]
+                        "path_parts": ["Без раздела"]
                     }
         
         return hierarchy
@@ -279,7 +327,7 @@ class AssetsExporter:
     def _sanitize_for_hierarchy(self, name: str) -> str:
         """Sanitize name for use in directory hierarchy."""
         # Remove or replace problematic characters
-        sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
+        sanitized = re.sub(r'[<>:"/\\|?*]', ' ', name)
         # Remove leading/trailing whitespace and dots
         sanitized = sanitized.strip('. ')
         # Limit length
@@ -288,7 +336,7 @@ class AssetsExporter:
         # Ensure it's not empty
         if not sanitized:
             sanitized = "Unnamed"
-        return sanitized
+        return _transliterate(sanitized)
     
     def _convert_resource_id_to_filename(self, resource_id: str, extension: str) -> str:
         """

@@ -58,28 +58,28 @@ class TestHierarchicalBuildCentralizedImages:
         written_paths = export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
         # Check main structure
-        doc_dir = output_dir / "test-document"
+        doc_dir = output_dir / "Test-document"
         assert doc_dir.exists()
         
         # Check centralized images directory
-        images_dir = doc_dir / "images"
+        images_dir = doc_dir / doc_dir.name
         assert images_dir.exists()
         
         # Check section-specific subdirectories in images
-        section1_images = images_dir / "010000.Общие сведения"
-        section2_images = images_dir / "020000.130000.API"
+        section1_images = images_dir / "Obshchie-svedeniya"
+        section2_images = images_dir / "130000api"
         
         assert section1_images.exists()
         assert section2_images.exists()
         
         # Check images are in correct locations
-        assert (section1_images / "img1.png").exists()
-        assert (section2_images / "img2.png").exists()
-        assert (section2_images / "img3.png").exists()
+        assert (section1_images / "image2.png").exists()
+        assert (section2_images / "image3.png").exists()
+        assert (section2_images / "image4.png").exists()
         
         # Check no individual images directories exist in sections
-        section1_dir = doc_dir / "010000.Общие сведения"
-        section2_dir = doc_dir / "020000.130000.API"
+        section1_dir = doc_dir / "010000.Obshchie-svedeniya"
+        section2_dir = doc_dir / "020000.130000.Api"
         
         assert not (section1_dir / "images").exists()
         assert not (section2_dir / "images").exists()
@@ -90,12 +90,12 @@ class TestHierarchicalBuildCentralizedImages:
         
         if section1_md.exists():
             content = section1_md.read_text()
-            assert "images/010000.Общие сведения/img1.png" in content
+            assert f"{doc_dir.name}/Obshchie-svedeniya/image2.png" in content
             
         if section2_md.exists():
             content = section2_md.read_text()
-            assert "images/020000.130000.API/img2.png" in content
-            assert "images/020000.130000.API/img3.png" in content
+            assert f"{doc_dir.name}/130000api/image3.png" in content
+            assert f"{doc_dir.name}/130000api/image4.png" in content
     
     def test_export_hierarchy_handles_sections_without_images(self, sample_docx_path, temp_output_dir, monkeypatch):
         """Test that sections without images don't create empty directories."""
@@ -119,20 +119,20 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "test-document"
-        images_dir = doc_dir / "images"
+        doc_dir = output_dir / "Test-document"
+        images_dir = doc_dir / doc_dir.name
         
         # Should have images directory
         assert images_dir.exists()
         
         # Should NOT have directory for text-only section
-        text_only_images = images_dir / "010000.Text Only Section"
+        text_only_images = images_dir / "Text-only-section"
         assert not text_only_images.exists()
         
         # Should have directory for section with images
-        with_images_dir = images_dir / "020000.Section With Images"
+        with_images_dir = images_dir / "Section-with-images"
         assert with_images_dir.exists()
-        assert (with_images_dir / "img1.png").exists()
+        assert (with_images_dir / "image2.png").exists()
     
     def test_export_hierarchy_sanitizes_section_names_for_directories(self, sample_docx_path, temp_output_dir, monkeypatch):
         """Test that section names with special characters are sanitized."""
@@ -154,8 +154,8 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "test-document"
-        images_dir = doc_dir / "images"
+        doc_dir = output_dir / "Test-document"
+        images_dir = doc_dir / doc_dir.name
         
         # Should find a sanitized directory name
         created_dirs = list(images_dir.iterdir())
@@ -169,7 +169,7 @@ class TestHierarchicalBuildCentralizedImages:
         assert "*" not in sanitized_dir.name
         
         # Should contain the image
-        assert (sanitized_dir / "img1.png").exists()
+        assert (sanitized_dir / "image2.png").exists()
     
     def test_export_hierarchy_handles_duplicate_images(self, sample_docx_path, temp_output_dir, monkeypatch):
         """Test deduplication of images with same content."""
@@ -195,11 +195,11 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "test-document"
-        images_dir = doc_dir / "images"
+        doc_dir = output_dir / "Test-document"
+        images_dir = doc_dir / doc_dir.name
         
-        section1_images = images_dir / "010000.Section One"
-        section2_images = images_dir / "020000.Section Two"
+        section1_images = images_dir / "Section-one"
+        section2_images = images_dir / "Section-two"
         
         # Both should reference images, but physical files should be deduplicated
         # This is implementation-dependent, but at minimum both sections should work
@@ -219,7 +219,7 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         written_paths = export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "test-document"
+        doc_dir = output_dir / "Test-document"
         
         # Should create document directory
         assert doc_dir.exists()
@@ -228,5 +228,5 @@ class TestHierarchicalBuildCentralizedImages:
         assert written_paths == []
         
         # Images directory should not exist for empty document
-        images_dir = doc_dir / "images"
+        images_dir = doc_dir / doc_dir.name
         assert not images_dir.exists()

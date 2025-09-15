@@ -79,12 +79,12 @@ class TestChapterAssetsExport:
         )
         
         # Check directory structure
-        images_dir = base_output_path / "images"
+        images_dir = base_output_path / base_output_path.name
         assert images_dir.exists()
         
         # Check chapter-specific directories
-        annotation_dir = images_dir / "АННОТАЦИЯ"
-        api_dir = images_dir / "API"  # Numeric prefix removed
+        annotation_dir = images_dir / "Annotatsiya"
+        api_dir = images_dir / "Api"  # Numeric prefix removed
         
         assert annotation_dir.exists()
         assert api_dir.exists()
@@ -95,9 +95,10 @@ class TestChapterAssetsExport:
         assert (api_dir / "img3.png").exists()
         
         # Verify asset_map has correct paths
-        assert asset_map["img1"] == "images/АННОТАЦИЯ/img1.png"
-        assert asset_map["img2"] == "images/API/img2.jpg"  # Numeric prefix removed
-        assert asset_map["img3"] == "images/API/img3.png"  # Numeric prefix removed
+        base = base_output_path.name
+        assert asset_map["img1"] == f"{base}/Annotatsiya/img1.png"
+        assert asset_map["img2"] == f"{base}/Api/img2.jpg"  # Numeric prefix removed
+        assert asset_map["img3"] == f"{base}/Api/img3.png"  # Numeric prefix removed
     
     def test_export_assets_handles_duplicate_resources(
         self, sample_chapters, temp_output_dir
@@ -145,11 +146,11 @@ class TestChapterAssetsExport:
         base_output_path = Path(temp_output_dir) / "test-doc"
         asset_map = export_assets_by_chapter([sample_resources[0]], chapters, str(base_output_path))
         
-        images_dir = base_output_path / "images"
+        images_dir = base_output_path / base_output_path.name
         
         # Only the chapter with images should have a directory created
-        text_only_dir = images_dir / "TextOnly"
-        with_image_dir = images_dir / "WithImage"
+        text_only_dir = images_dir / "Textonly"
+        with_image_dir = images_dir / "Withimage"
         
         assert not text_only_dir.exists()
         assert with_image_dir.exists()
@@ -167,7 +168,7 @@ class TestChapterAssetsExport:
         asset_map = export_assets_by_chapter([sample_resources[0]], chapters, str(base_output_path))
         
         # Check that directory was created with sanitized name
-        images_dir = base_output_path / "images"
+        images_dir = base_output_path / base_output_path.name
         
         # Should find a directory that doesn't contain special characters
         created_dirs = list(images_dir.iterdir())

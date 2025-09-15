@@ -29,7 +29,7 @@ def _clean_heading_text(text: str) -> str:
     - "1) Введение" -> "Введение"
     - "(2.1) - Описание" -> "Описание"
     """
-    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+)\.?\)?\s*(?:[-–—]\s*)?"
+    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+(?=[.\s]))\.?\)?\s*(?:[-–—]\s*)?"
     return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
 
 def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
