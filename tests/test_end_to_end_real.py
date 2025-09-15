@@ -32,7 +32,7 @@ class TestRealDocumentProcessing:
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
             # Verify basic structure exists
-            doc_dir = output_dir / "Cu-admin-install"
+            doc_dir = output_dir / "cu-admin-install"  # lowercase after _transliterate fix
             assert doc_dir.exists(), "Main document directory should be created"
             
             # Verify markdown files are created
@@ -40,7 +40,7 @@ class TestRealDocumentProcessing:
             assert len(md_files) > 0, "Should generate at least one markdown file"
             
             # Verify images directory exists
-            images_dir = doc_dir / "Cu-admin-install"  # Images dir named like document
+            images_dir = doc_dir / "cu-admin-install"  # lowercase after _transliterate fix
             assert images_dir.exists(), "Images directory should be created"
             
             # Verify some images are extracted
@@ -71,7 +71,7 @@ class TestRealDocumentProcessing:
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
             # Find all markdown files
-            doc_dir = output_dir / "Cu-admin-install"
+            doc_dir = output_dir / "cu-admin-install"  # lowercase after _transliterate fix
             md_files = list(doc_dir.rglob("*.md"))
             
             content_found = False
@@ -101,7 +101,7 @@ class TestRealDocumentProcessing:
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
             # Find all markdown files
-            doc_dir = output_dir / "Cu-admin-install"
+            doc_dir = output_dir / "cu-admin-install"  # lowercase after _transliterate fix
             md_files = list(doc_dir.rglob("*.md"))
             
             sign_image_found = False
@@ -152,7 +152,7 @@ class TestRealDocumentProcessing:
             # Run pipeline
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
-            doc_dir = output_dir / "Cu-admin-install"
+            doc_dir = output_dir / "cu-admin-install"  # lowercase after _transliterate fix
             
             # Get all directories (excluding images directory)
             all_dirs = [d for d in doc_dir.rglob("*") if d.is_dir()]
@@ -179,7 +179,7 @@ class TestRealDocumentProcessing:
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
             # Find all markdown files
-            doc_dir = output_dir / "Cu-admin-install"
+            doc_dir = output_dir / "cu-admin-install"  # lowercase after _transliterate fix
             md_files = list(doc_dir.rglob("*.md"))
             
             for md_file in md_files:
@@ -230,7 +230,7 @@ class TestDocumentSpecificContent:
             export_docx_hierarchy_centralized(cu_admin_docx, output_dir)
             
             # Check images directory
-            images_dir = output_dir / "Cu-admin-install" / "Cu-admin-install"
+            images_dir = output_dir / "cu-admin-install" / "cu-admin-install"  # lowercase after _transliterate fix
             assert images_dir.exists(), "Images directory should exist for this document"
             
             # Should have multiple images

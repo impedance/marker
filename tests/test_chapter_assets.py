@@ -83,8 +83,8 @@ class TestChapterAssetsExport:
         assert images_dir.exists()
         
         # Check chapter-specific directories
-        annotation_dir = images_dir / "Annotatsiya"
-        api_dir = images_dir / "Api"  # Numeric prefix removed
+        annotation_dir = images_dir / "annotatsiya"  # lowercase after _transliterate fix
+        api_dir = images_dir / "api"  # lowercase after _transliterate fix
         
         assert annotation_dir.exists()
         assert api_dir.exists()
@@ -96,9 +96,9 @@ class TestChapterAssetsExport:
         
         # Verify asset_map has correct paths
         base = base_output_path.name
-        assert asset_map["img1"] == f"{base}/Annotatsiya/img1.png"
-        assert asset_map["img2"] == f"{base}/Api/img2.jpg"  # Numeric prefix removed
-        assert asset_map["img3"] == f"{base}/Api/img3.png"  # Numeric prefix removed
+        assert asset_map["img1"] == f"{base}/annotatsiya/img1.png"  # lowercase after _transliterate fix
+        assert asset_map["img2"] == f"{base}/api/img2.jpg"  # lowercase after _transliterate fix
+        assert asset_map["img3"] == f"{base}/api/img3.png"  # lowercase after _transliterate fix
     
     def test_export_assets_handles_duplicate_resources(
         self, sample_chapters, temp_output_dir
@@ -149,8 +149,8 @@ class TestChapterAssetsExport:
         images_dir = base_output_path / base_output_path.name
         
         # Only the chapter with images should have a directory created
-        text_only_dir = images_dir / "Textonly"
-        with_image_dir = images_dir / "Withimage"
+        text_only_dir = images_dir / "textonly"  # lowercase after _transliterate fix
+        with_image_dir = images_dir / "withimage"  # lowercase after _transliterate fix
         
         assert not text_only_dir.exists()
         assert with_image_dir.exists()

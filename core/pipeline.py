@@ -45,7 +45,7 @@ class DocumentPipeline:
         try:
             # Setup output directories
             output_path = Path(output_dir)
-            input_basename = Path(input_path).stem
+            input_basename = Path(input_path).stem.lower()  # Convert to lowercase
             doc_output_dir = output_path / input_basename
             chapters_dir = doc_output_dir / "chapters"
             assets_dir = doc_output_dir / self.config.assets_dir

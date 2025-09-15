@@ -57,8 +57,7 @@ def _transliterate(text: str) -> str:
     result = "".join(_RU_TRANS.get(ch, ch) for ch in text)
     result = re.sub(r"[^a-z0-9\s-]", "", result)
     result = re.sub(r"\s+", "-", result.strip())
-    if result:
-        result = result[0].upper() + result[1:]
+    # Keep all lowercase - removed uppercase conversion
     return result
 
 def export_assets(resources: List[ResourceRef], output_dir: str) -> Dict[str, str]:

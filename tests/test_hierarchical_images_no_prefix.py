@@ -72,20 +72,20 @@ class TestHierarchicalImagesNoPrefix:
         assert assets_dir.exists()
         
         # Verify hierarchical structure without numeric prefixes
-        # Level 1: Main sections
-        general_section = assets_dir / "Obshchie-svedeniya"
-        portal_section = assets_dir / "Nachalo-raboty-s-portalom"
-        ui_section = assets_dir / "Komponenty-polzovatelskogo-interfeisa"
+        # Level 1: Main sections (lowercase after _transliterate fix)
+        general_section = assets_dir / "obshchie-svedeniya"
+        portal_section = assets_dir / "nachalo-raboty-s-portalom"
+        ui_section = assets_dir / "komponenty-polzovatelskogo-interfeisa"
         
         assert general_section.exists()
         assert portal_section.exists()  
         assert ui_section.exists()
         
         # Level 2: Subsections
-        annotation_subsection = general_section / "Annotatsiya"
-        sipa_subsection = portal_section / "Ustanovka-sipa"
-        rosa_subsection = portal_section / "Ustanovka-rosa-tsentr-upravleniya"
-        mobile_subsection = ui_section / "Integratsiya-s-mobilnymi-ustroistvami"
+        annotation_subsection = general_section / "annotatsiya"  # lowercase after _transliterate fix
+        sipa_subsection = portal_section / "ustanovka-sipa"  # lowercase after _transliterate fix
+        rosa_subsection = portal_section / "ustanovka-rosa-tsentr-upravleniya"  # lowercase after _transliterate fix
+        mobile_subsection = ui_section / "integratsiya-s-mobilnymi-ustroistvami"  # lowercase after _transliterate fix
         
         assert annotation_subsection.exists()
         assert sipa_subsection.exists()
@@ -124,11 +124,11 @@ class TestHierarchicalImagesNoPrefix:
         exporter.export_hierarchical_images(doc, resources)
         
         # Should NOT create directory for section without images
-        empty_section = assets_dir / "Razdel-bez-izobrazhenii"
+        empty_section = assets_dir / "razdel-bez-izobrazhenii"  # lowercase after _transliterate fix
         assert not empty_section.exists()
         
         # Should create directory for section with images
-        with_images = assets_dir / "Razdel-s-izobrazheniyami" / "Podrazdel-s-izobrazheniem"
+        with_images = assets_dir / "razdel-s-izobrazheniyami" / "podrazdel-s-izobrazheniem"  # lowercase after _transliterate fix
         assert with_images.exists()
         assert (with_images / "image2.png").exists()  # img1 -> image2.png
     
@@ -152,7 +152,7 @@ class TestHierarchicalImagesNoPrefix:
         exporter.export_hierarchical_images(doc, resources)
         
         # Verify filename conversion (special_image_41 -> image41.jpg)
-        image_path = assets_dir / "Test" / "Podtest" / "image41.jpg"
+        image_path = assets_dir / "test" / "podtest" / "image41.jpg"  # lowercase after _transliterate fix
         assert image_path.exists()
     
     def test_expected_cu_admin_install_structure(self, temp_output_dir):
@@ -198,7 +198,7 @@ class TestHierarchicalImagesNoPrefix:
         # │   └── Установка РОСА Центр Управления/
         # │       └── image5.png
         
-        assert (assets_dir / "Obshchie-svedeniya" / "Annotatsiya" / "image2.png").exists()
-        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-sipa" / "image3.png").exists()
-        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-sipa" / "image4.png").exists()
-        assert (assets_dir / "Nachalo-raboty-s-portalom" / "Ustanovka-rosa-tsentr-upravleniya" / "image5.png").exists()
+        assert (assets_dir / "obshchie-svedeniya" / "annotatsiya" / "image2.png").exists()  # lowercase after _transliterate fix
+        assert (assets_dir / "nachalo-raboty-s-portalom" / "ustanovka-sipa" / "image3.png").exists()  # lowercase after _transliterate fix
+        assert (assets_dir / "nachalo-raboty-s-portalom" / "ustanovka-sipa" / "image4.png").exists()  # lowercase after _transliterate fix
+        assert (assets_dir / "nachalo-raboty-s-portalom" / "ustanovka-rosa-tsentr-upravleniya" / "image5.png").exists()  # lowercase after _transliterate fix

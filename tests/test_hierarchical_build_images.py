@@ -58,7 +58,7 @@ class TestHierarchicalBuildCentralizedImages:
         written_paths = export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
         # Check main structure
-        doc_dir = output_dir / "Test-document"
+        doc_dir = output_dir / "test-document"  # lowercase after _transliterate fix
         assert doc_dir.exists()
         
         # Check centralized images directory
@@ -66,8 +66,8 @@ class TestHierarchicalBuildCentralizedImages:
         assert images_dir.exists()
         
         # Check section-specific subdirectories in images
-        section1_images = images_dir / "Obshchie-svedeniya"
-        section2_images = images_dir / "130000api"
+        section1_images = images_dir / "obshchie-svedeniya"  # lowercase after _transliterate fix
+        section2_images = images_dir / "130000api"  # lowercase after _transliterate fix
         
         assert section1_images.exists()
         assert section2_images.exists()
@@ -78,8 +78,8 @@ class TestHierarchicalBuildCentralizedImages:
         assert (section2_images / "image4.png").exists()
         
         # Check no individual images directories exist in sections
-        section1_dir = doc_dir / "010000.Obshchie-svedeniya"
-        section2_dir = doc_dir / "020000.130000.Api"
+        section1_dir = doc_dir / "010000.obshchie-svedeniya"  # lowercase after _transliterate fix
+        section2_dir = doc_dir / "020000.130000.api"  # lowercase after _transliterate fix
         
         assert not (section1_dir / "images").exists()
         assert not (section2_dir / "images").exists()
@@ -122,18 +122,18 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "Test-document"
+        doc_dir = output_dir / "test-document"  # lowercase after _transliterate fix
         images_dir = doc_dir / doc_dir.name
         
         # Should have images directory
         assert images_dir.exists()
         
         # Should NOT have directory for text-only section
-        text_only_images = images_dir / "Text-only-section"
+        text_only_images = images_dir / "text-only-section"  # lowercase after _transliterate fix
         assert not text_only_images.exists()
         
         # Should have directory for section with images
-        with_images_dir = images_dir / "Section-with-images"
+        with_images_dir = images_dir / "section-with-images"  # lowercase after _transliterate fix
         assert with_images_dir.exists()
         assert (with_images_dir / "image2.png").exists()
     
@@ -157,7 +157,7 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "Test-document"
+        doc_dir = output_dir / "test-document"  # lowercase after _transliterate fix
         images_dir = doc_dir / doc_dir.name
         
         # Should find a sanitized directory name
@@ -198,11 +198,11 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "Test-document"
+        doc_dir = output_dir / "test-document"  # lowercase after _transliterate fix
         images_dir = doc_dir / doc_dir.name
         
-        section1_images = images_dir / "Section-one"
-        section2_images = images_dir / "Section-two"
+        section1_images = images_dir / "section-one"  # lowercase after _transliterate fix
+        section2_images = images_dir / "section-two"  # lowercase after _transliterate fix
         
         # Both should reference images, but physical files should be deduplicated
         # This is implementation-dependent, but at minimum both sections should work
@@ -222,7 +222,7 @@ class TestHierarchicalBuildCentralizedImages:
         output_dir = Path(temp_output_dir) / "output"
         written_paths = export_docx_hierarchy_centralized(sample_docx_path, output_dir)
         
-        doc_dir = output_dir / "Test-document"
+        doc_dir = output_dir / "test-document"  # lowercase after _transliterate fix
         
         # Should create document directory
         assert doc_dir.exists()
