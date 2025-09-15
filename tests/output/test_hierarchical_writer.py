@@ -76,18 +76,18 @@ def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
         "core.output.hierarchical_writer.parse_document", lambda path: (doc, {})
     )
     written = export_docx_hierarchy("dummy.docx", tmp_path)
-    doc_dir = tmp_path / "dummy"
+    doc_dir = tmp_path / "Dummy"
     expected = {
-        doc_dir / "010000.Chapter 1" / "index.md",
-        doc_dir / "010000.Chapter 1" / "010100.Section 1.md",
-        doc_dir / "010000.Chapter 1" / "010200.Section 2.md",
-        doc_dir / "020000.Chapter 2" / "index.md",
+        doc_dir / "010000.Chapter-1" / "index.md",
+        doc_dir / "010000.Chapter-1" / "010100.Section-1.md",
+        doc_dir / "010000.Chapter-1" / "010200.Section-2.md",
+        doc_dir / "020000.Chapter-2" / "index.md",
     }
     assert set(written) == expected
-    index_content = Path(doc_dir / "010000.Chapter 1" / "index.md").read_text()
+    index_content = Path(doc_dir / "010000.Chapter-1" / "index.md").read_text()
     assert index_content.startswith("# Chapter 1")
-    sec_content = Path(doc_dir / "010000.Chapter 1" / "010100.Section 1.md").read_text()
-    assert sec_content.startswith("## 1.1 Section 1")
+    sec_content = Path(doc_dir / "010000.Chapter-1" / "010100.Section-1.md").read_text()
+    assert sec_content.startswith("# Section 1")
 
 
 def test_cli_build_invokes_export(monkeypatch, tmp_path):

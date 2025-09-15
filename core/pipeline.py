@@ -67,7 +67,7 @@ class DocumentPipeline:
             chapters = split_into_chapters(doc, rules)
 
             # 4. Export assets using hierarchical organization
-            images_dir = doc_output_dir / "images"
+            images_dir = doc_output_dir / input_basename
             exporter = AssetsExporter(images_dir)
             asset_map = exporter.export_hierarchical_images(doc, resources)
             

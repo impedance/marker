@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 
 from ..adapters.document_parser import parse_document
 from ..render.markdown_renderer import render_markdown
-from ..render.assets_exporter import AssetsExporter
+from ..render.assets_exporter import AssetsExporter, _transliterate
 from .writer import Writer
 
 _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
@@ -28,9 +28,11 @@ def _split_number_and_title(text: str) -> Tuple[List[int], str]:
 
 
 def _clean_filename(title: str) -> str:
-    """Removes filesystem reserved characters."""
+    """Sanitize and transliterate title for filesystem use."""
     title = re.sub(r"[/\\:*?\"<>|]", " ", title).strip()
-    return re.sub(r"\s{2,}", " ", title)
+    title = re.sub(r"\s{2,}", " ", title)
+    parts = [_transliterate(p) for p in title.split('.')]
+    return '.'.join(p for p in parts if p)
 
 
 def _code_for_levels(nums: List[int]) -> str:
@@ -262,19 +264,19 @@ def _sanitize_dir_name(name: str) -> str:
 def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: str | os.PathLike) -> List[Path]:
     """
     Exports a DOCX into a folder hierarchy by headings with centralized images structure.
-    
-    Instead of creating images/ folder in each section, creates one central images/ folder
-    with subdirectories named after sections.
-    
+
+    Instead of creating an images/ folder in each section, creates one central folder named
+    after the document itself with subdirectories for each section.
+
     Structure:
     document_name/
-    ├── images/
+    ├── document_name/
     │   ├── section1_name/
     │   └── section2_name/
     ├── section1_dir/
-    │   └── index.md (references ../images/section1_name/...)
+    │   └── index.md (references ../document_name/section1_name/...)
     └── section2_dir/
-        └── index.md (references ../images/section2_name/...)
+        └── index.md (references ../document_name/section2_name/...)
     """
     from ..render.assets_exporter import AssetsExporter
     
@@ -291,7 +293,7 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
     doc, resources = parse_document(str(docx_path))
     
     # Use new hierarchical assets exporter
-    central_images_dir = doc_root / "images"
+    central_images_dir = doc_root / doc_name
     exporter = AssetsExporter(central_images_dir)
     final_asset_map = exporter.export_hierarchical_images(doc, resources)
     

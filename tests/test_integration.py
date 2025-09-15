@@ -120,7 +120,7 @@ class TestDocumentPipelineIntegration:
             # Check that images directory is used (new structure)
             temp_path = Path(temp_dir)
             doc_dir = temp_path / DOCX_PATH.stem
-            images_dir = doc_dir / "images"
+            images_dir = doc_dir / doc_dir.name
             # Images directory should exist if there are any images
             if result.asset_files:
                 assert images_dir.exists(), "Images directory should be created when assets exist"
@@ -164,7 +164,7 @@ class TestDocumentPipelineIntegration:
             temp_path = Path(temp_dir)
             doc_dir = temp_path / DOCX_PATH.stem
             chapters_dir = doc_dir / "chapters"
-            images_dir = doc_dir / "images"
+            images_dir = doc_dir / doc_dir.name
             
             assert doc_dir.exists(), "Document directory should be created"
             assert chapters_dir.exists(), "Chapters directory should be created"
