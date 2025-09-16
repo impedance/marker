@@ -59,6 +59,47 @@ def _slug(s:str)->str:
     s = re.sub(r'\s+', '-', s)
     return re.sub(r'-+', '-', s).strip('-')
 
+
+def _normalize_number_text(number_text: str, level: int, last_numbers: List[int]) -> str:
+    """Normalize numbering by inheriting missing parent components.
+
+    Args:
+        number_text: Raw numbering string extracted from XML.
+        level: Zero-based heading level (0 for H1, 1 for H2, etc.).
+        last_numbers: Mutable list storing the last seen numeric values per level.
+
+    Returns:
+        Normalized numbering string with non-zero parent components.
+    """
+
+    if not number_text:
+        return number_text
+
+    raw_parts = [part.strip() for part in number_text.split('.') if part.strip() != ""]
+    if not raw_parts:
+        return number_text.strip()
+
+    fallback = list(last_numbers)
+    limit = min(len(raw_parts), len(fallback), level + 1)
+
+    for idx in range(limit):
+        part = raw_parts[idx]
+        if part in {"", "0"}:
+            fallback_value = fallback[idx]
+            raw_parts[idx] = str(fallback_value) if fallback_value > 0 else "1"
+
+    for idx in range(limit):
+        part = raw_parts[idx]
+        if part.isdigit():
+            last_numbers[idx] = int(part)
+        else:
+            last_numbers[idx] = 0
+
+    for idx in range(limit, len(last_numbers)):
+        last_numbers[idx] = 0
+
+    return ".".join(raw_parts)
+
 def _parse_numbering(xml: bytes) -> Dict[int, NumDef]:
     root = ET.fromstring(xml); nums: Dict[int, NumDef] = {}; abstract: Dict[int, Dict[int, Lvl]] = {}
     for an in root.findall("w:abstractNum", NS):
@@ -111,6 +152,7 @@ def extract_headings_with_numbers(docx_path: str) -> List[NumberedHeading]:
     style2lvl = _style_to_level(styles)
     root = ET.fromstring(doc); body = root.find("w:body", NS)
     counters_by_numId: Dict[int, List[int]] = {}
+    last_numbers: List[int] = [0] * 10
     results: List[NumberedHeading] = []
 
     for p in body.findall("w:p", NS):
@@ -163,6 +205,8 @@ def extract_headings_with_numbers(docx_path: str) -> List[NumberedHeading]:
             for i in range(level+1,9): stack[i] = 0
             stack[level] += 1
             number_text = ".".join(str(stack[i]) for i in range(level+1))
+
+        number_text = _normalize_number_text(number_text, level, last_numbers)
 
         results.append(NumberedHeading(
             level=level+1, text=text, number=number_text, anchor=_slug(text),

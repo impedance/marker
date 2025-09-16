@@ -78,13 +78,13 @@ def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
     written = export_docx_hierarchy("dummy.docx", tmp_path)
     doc_dir = tmp_path / "dummy"  # lowercase after _transliterate fix
     expected = {
-        doc_dir / "010000.chapter-1" / "index.md",  # lowercase after _transliterate fix
+        doc_dir / "010000.chapter-1" / "0.index.md",  # lowercase after _transliterate fix
         doc_dir / "010000.chapter-1" / "010100.section-1.md",  # lowercase after _transliterate fix
         doc_dir / "010000.chapter-1" / "010200.section-2.md",  # lowercase after _transliterate fix
-        doc_dir / "020000.chapter-2" / "index.md",  # lowercase after _transliterate fix
+        doc_dir / "020000.chapter-2" / "0.index.md",  # lowercase after _transliterate fix
     }
     assert set(written) == expected
-    index_content = Path(doc_dir / "010000.chapter-1" / "index.md").read_text()  # lowercase after _transliterate fix
+    index_content = Path(doc_dir / "010000.chapter-1" / "0.index.md").read_text()  # lowercase after _transliterate fix
     assert index_content.startswith("# Chapter 1")
     sec_content = Path(doc_dir / "010000.chapter-1" / "010100.section-1.md").read_text()  # lowercase after _transliterate fix
     assert sec_content.startswith("# Section 1")

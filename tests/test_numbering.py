@@ -82,6 +82,40 @@ class TestHeadingNumbering:
             assert headings[0].level == 1
             assert headings[0].number == "1"
 
+    @pytest.mark.parametrize(
+        "docx_name",
+        [
+            pytest.param("real-docs/hrom-user.docx", id="hrom-user"),
+            pytest.param("real-docs/hrom-admin.docx", id="hrom-admin"),
+        ],
+    )
+    def test_real_doc_numbering_has_no_zero_prefix(self, docx_name):
+        """Ensure extracted numbering for real documents keeps parent segments."""
+        docx_path = Path(docx_name)
+        if not docx_path.exists():
+            pytest.skip(f"Test document {docx_path} not found")
+
+        headings = extract_headings_with_numbers(str(docx_path))
+
+        def has_zero_prefix(number: str) -> bool:
+            parts = [part.strip() for part in number.split('.') if part.strip() != ""]
+            if not parts:
+                return False
+            if parts[0] == "0":
+                return True
+            return any(part == "0" for part in parts[:-1])
+
+        invalid = [
+            (heading.number, heading.text)
+            for heading in headings
+            if heading.number and has_zero_prefix(heading.number)
+        ]
+
+        assert not invalid, (
+            "Extracted numbering should not contain zero-valued parent segments. "
+            f"Found: {invalid}"
+        )
+
 
 class TestMdNumbering:
     """Tests for markdown numbering application."""
