@@ -692,6 +692,30 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     def is_note_paragraph(text: str) -> bool:
         """Check if paragraph text starts with note pattern."""
         return bool(re.match(r'^\s*Примечание\s*–', text.strip()))
+    
+    def is_table_caption(text: str) -> bool:
+        """Check if paragraph text is a table caption that should not have dash prefix."""
+        # Pattern for table captions - common patterns found in documents
+        table_patterns = [
+            # Explicit table captions with numbers
+            r'^\s*Таблица\s+\d+\s*[-–—]\s*.+',
+            r'^\s*Table\s+\d+\s*[-–—]\s*.+',
+            r'^\s*Таблица\s+\d+\s*.+',
+            r'^\s*Table\s+\d+\s*.+',
+            # Table descriptions/captions about requirements/parameters
+            r'^\s*[Тт]ребования\s+к\s+аппаратным\s+средствам.+',
+            r'^\s*[Тт]ребования\s+к\s+программным\s+средствам.+',  
+            r'^\s*[Пп]араметры.+таблиц[еы].*',
+            r'^\s*[Хх]арактеристики.+',
+            # Generic patterns for table-like content descriptions
+            r'^\s*[Оо]писание\s+(параметров|характеристик).+',
+            r'^\s*[Сс]писок\s+(параметров|требований).+',
+        ]
+        text_stripped = text.strip()
+        for pattern in table_patterns:
+            if re.match(pattern, text_stripped, re.IGNORECASE):
+                return True
+        return False
 
     def _clean_bash_prefix(line: str) -> str:
         """Remove leading '# ' used in doc formatting before commands."""
@@ -796,7 +820,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                         prev_text = text
                         continue
 
-                    if list_type:
+                    if list_type and not is_table_caption(text):
                         text = f"- {text}"
                     elif is_note_paragraph(text):
                         text = f"> {text}"
