@@ -122,12 +122,75 @@ def _extract_numbering_from_runs(p: ET.Element) -> str:
     
     return ""
 
-def _text_of(p: ET.Element) -> str:
+def _extract_section_mapping(docx_root: ET.Element) -> Dict[str, str]:
+    """Extract mapping from section numbers to section titles."""
+    section_map = {}
+    
+    for para in docx_root.findall('.//w:p', NS):
+        # Check if this is a heading paragraph
+        pPr = para.find('w:pPr', NS)
+        if pPr is not None:
+            pStyle = pPr.find('w:pStyle', NS)
+            outlineLvl = pPr.find('w:outlineLvl', NS)
+            
+            # Get all text from paragraph
+            text_content = ''
+            for t in para.findall('.//w:t', NS):
+                if t.text:
+                    text_content += t.text
+            
+            is_heading = False
+            
+            if pStyle is not None:
+                style_val = pStyle.get(f"{{{NS['w']}}}val", '')
+                if 'heading' in style_val.lower() or style_val.lower().startswith('toc'):
+                    is_heading = True
+            
+            if outlineLvl is not None:
+                is_heading = True
+                
+            # Check if text looks like a numbered heading
+            if text_content and re.match(r'^\d+(\.\d+)*\s', text_content):
+                is_heading = True
+                
+            if is_heading and text_content.strip():
+                # Extract section number and title, removing page numbers
+                match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)', text_content.strip())
+                if match:
+                    section_num = match.group(1)
+                    section_title = match.group(2)
+                    
+                    # Clean up the title - remove trailing numbers (page numbers)
+                    clean_title = re.sub(r'\d+$', '', section_title).strip()
+                    
+                    # Skip very generic titles like navigation elements
+                    if len(clean_title) > 5 and not clean_title.startswith('–'):
+                        section_map[section_num] = clean_title
+    
+    return section_map
+
+def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
+    """Replace cross-references like '(см. п.3.2.1)' with section titles."""
+    ref_pattern = r'\(см\.\s*п\.\s*([\d\.]+)\)'
+    
+    def replace_ref(match):
+        section_num = match.group(1)
+        if section_num in section_map:
+            return f'(см. п. {section_map[section_num]})'
+        return match.group(0)  # Return original if not found
+    
+    return re.sub(ref_pattern, replace_ref, text)
+
+def _text_of(p: ET.Element, section_map: Dict[str, str] = None) -> str:
     """Extract text from paragraph, including any manual numbering."""
     texts: List[str] = []
     for t in p.findall(".//w:t", NS):
         texts.append(t.text or "")
     full_text = "".join(texts).strip()
+    
+    # Apply cross-reference replacement if section_map is provided
+    if section_map and full_text:
+        full_text = _replace_cross_references(full_text, section_map)
     
     return full_text
 
@@ -592,6 +655,10 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     if body is None:
         raise RuntimeError("No <w:body> found")
     
+    # Extract section mapping for cross-reference replacement
+    docx_root = ET.fromstring(doc_xml)
+    section_map = _extract_section_mapping(docx_root)
+    
     patterns = DEFAULT_HEADING_PATTERNS
     blocks: List[Block] = []
     resources: List[ResourceRef] = list(media_images.values())  # Extract all images as resources
@@ -727,7 +794,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         if el.tag == f"{{{NS['w']}}}p":
             p = el
             lvl = heading_level(p, style_map, patterns)
-            text = _text_of(p)
+            text = _text_of(p, section_map)
             list_type = _paragraph_list_type(p, style_nums, num_fmts)
             paragraph_images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
             for image in paragraph_images:
