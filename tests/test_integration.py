@@ -172,5 +172,5 @@ class TestDocumentPipelineIntegration:
             if result.asset_files:
                 assert images_dir.exists(), "Images directory should be created when assets exist"
             
-            assert (doc_dir / "index.md").exists(), "Index file should be created"
+            assert (doc_dir / "0.index.md").exists(), "Index file should be created"
             assert (doc_dir / "manifest.json").exists(), "Manifest file should be created"

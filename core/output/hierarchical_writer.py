@@ -189,7 +189,7 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
             section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, current_images_dir, writer)
             
             md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
-            path = h1_dir / "index.md"
+            path = h1_dir / "0.index.md"
             writer.write_text(path, md)
             written.append(path)
         elif sec.level == 2:
@@ -205,7 +205,7 @@ def export_docx_hierarchy(docx_path: str | os.PathLike, out_root: str | os.PathL
                 section_asset_map = _copy_section_images(sec.blocks, asset_map, temp_assets_dir, current_images_dir, writer)
                 
                 md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), section_asset_map)
-                path = fallback_dir / "index.md"
+                path = fallback_dir / "0.index.md"
                 writer.write_text(path, md)
                 written.append(path)
             else:
@@ -314,7 +314,7 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
             writer.ensure_dir(h1_dir)
             
             md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
-            path = h1_dir / "index.md"
+            path = h1_dir / "0.index.md"
             writer.write_text(path, md)
             written.append(path)
             
@@ -326,7 +326,7 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
                 writer.ensure_dir(fallback_dir)
                 
                 md = render_markdown(type("Doc", (), {"blocks": sec.blocks}), final_asset_map)
-                path = fallback_dir / "index.md"
+                path = fallback_dir / "0.index.md"
                 writer.write_text(path, md)
                 written.append(path)
             else:

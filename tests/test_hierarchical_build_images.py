@@ -85,8 +85,8 @@ class TestHierarchicalBuildCentralizedImages:
         assert not (section2_dir / "images").exists()
         
         # Check markdown files reference correct paths
-        section1_md = section1_dir / "index.md"
-        section2_md = section2_dir / "index.md"
+        section1_md = section1_dir / "0.index.md"
+        section2_md = section2_dir / "0.index.md"
         
         if section1_md.exists():
             content = section1_md.read_text()

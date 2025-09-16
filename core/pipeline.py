@@ -119,7 +119,7 @@ class DocumentPipeline:
 
             # 8. Generate and write index.md (TOC)
             index_content = build_index(chapter_info, metadata)
-            index_path = doc_output_dir / "index.md"
+            index_path = doc_output_dir / "0.index.md"
             self.writer.write_text(index_path, index_content)
 
             # 9. Generate and write manifest.json
