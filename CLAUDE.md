@@ -195,7 +195,6 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 - **`beautifulsoup4`** - HTML/XML parsing ✅ potential use
 - **`python-slugify`** - URL slug generation ✅ actively used for file naming
 - **`rich`** - Terminal formatting ✅ actively used for CLI output
-- **`docling`** - Universal document parser ❌ **NOT USED** (listed but no actual imports)
 
 ### 🔧 Document Processing Stack
 - **`xml.etree.ElementTree`** - Core XML parsing (built-in Python) ✅ actively used

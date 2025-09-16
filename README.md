@@ -1,6 +1,6 @@
-# Docling Document Processing Pipeline
+# DOCX Document Processing Pipeline
 
-A powerful document conversion tool that transforms DOCX files into structured Markdown chapters with extracted assets, using the [docling](https://github.com/docling-project/docling) library.
+A powerful document conversion tool that transforms DOCX files into structured Markdown chapters with extracted assets, using custom XML parsing for precise DOCX processing.
 
 ## Features
 
@@ -16,7 +16,7 @@ A powerful document conversion tool that transforms DOCX files into structured M
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
-   cd docling
+   cd marker
    ```
 
 2. **Set up virtual environment**:
@@ -230,9 +230,9 @@ mypy .
 ### Project Structure
 
 ```
-docling/
+marker/
 ├── core/                         # Core processing modules
-│   ├── adapters/                 # Document parsers (docling integration)
+│   ├── adapters/                 # Document parsers (custom XML parsing)
 │   ├── model/                    # Data models and configuration
 │   ├── output/                   # File writing and naming
 │   ├── render/                   # Markdown rendering and asset export
@@ -249,7 +249,7 @@ docling/
 
 ### Common Issues
 
-**"ModuleNotFoundError: No module named 'docling'"**
+**"Import errors"**
 ```bash
 # Make sure virtual environment is activated and dependencies installed
 source .venv/bin/activate
@@ -281,4 +281,4 @@ python doc2chapmd.py config-show --help
 
 ## License
 
-This project uses the [docling](https://github.com/docling-project/docling) library for document processing.
+This project uses custom XML parsing for precise DOCX document processing with advanced numbering extraction and content detection.

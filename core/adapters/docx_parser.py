@@ -7,7 +7,7 @@ Parse DOCX files using WordprocessingML (DOCX XML) to extract structured content
 - Extracts images from word/media/ directory and references from document.xml.
 - Returns structured data compatible with InternalDoc AST format.
 
-This module replaces the generic docling parsing for DOCX files to ensure
+This module provides specialized DOCX parsing to ensure
 proper chapter extraction and heading numbering preservation.
 """
 from __future__ import annotations

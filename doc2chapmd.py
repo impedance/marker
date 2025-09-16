@@ -2,7 +2,7 @@
 """
 Document to Chapter Markdown Converter
 
-CLI tool to convert DOCX documents into structured Markdown chapters using docling.
+CLI tool to convert DOCX documents into structured Markdown chapters using custom XML parsing.
 """
 
 from pathlib import Path

@@ -54,7 +54,7 @@ class DocumentPipeline:
             self.writer.ensure_dir(doc_output_dir)
             self.writer.ensure_dir(chapters_dir)
             
-            # 1. Parse with docling adapter
+            # 1. Parse with document adapter
             doc, resources = parse_document(input_path)
 
             # 2. Apply transforms

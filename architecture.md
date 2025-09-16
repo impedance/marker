@@ -11,7 +11,7 @@
 # Ключевые идеи
 
 1. **Docling как универсальный парсер** → единый внутренний формат (структурированное дерево документа + позиции, роли, ссылки на бинарные ресурсы).
-2. **Единый «внутренний AST»** → минимизация связки на конкретную версию docling. Маппим docling → `InternalDoc` (наши dataclass’ы), а дальше работаем только с ним.
+2. **Единый «внутренний AST»** → минимизация связки на конкретную версию custom XML parser. Маппим custom XML parser → `InternalDoc` (наши dataclass’ы), а дальше работаем только с ним.
 3. **Правила разбиения по главам** → по уровню заголовков (по умолчанию H1), с настраиваемыми исключениями (предисловие, приложения, титульная и т.п.).
 4. **Детерминированные имена файлов** → `NN-title-slug.md` и `assets/img-XXXX.ext` для стабильных ссылок в diff’ах.
 5. **Идempoтентность** → одинаковый вход → одинаковый вывод (хеши контента, кэш изображений, одинаковые слуги).
@@ -23,7 +23,7 @@
 ```
 / core
   ├─ adapters/
-  │   ├─ docling_adapter.py        # чтение через docling, извлечение AST и бинарей
+  │   ├─ document_parser.py        # чтение через custom XML parser, извлечение AST и бинарей
   │   └─ mime_guesser.py
   ├─ model/
   │   ├─ internal_doc.py           # AST: Block, Inline, Heading, Paragraph, List, Table, Image, Footnote, etc.
@@ -59,9 +59,9 @@
 # Поток данных
 
 1. **Вход**: путь к файлу (`.docx`).
-2. **Адаптер** (`docling_adapter`):
+2. **Адаптер** (`document_parser`):
 
-   * Определяет mime → вызывает docling.
+   * Определяет mime → вызывает custom XML parser.
    * Получает структурированное представление + извлекает бинарные объекты (изображения, вложения).
    * Маппит в `InternalDoc + resources` (без Markdown-специфики).
 3. **Трансформации**: `normalize` → `structure_fixes` (правка уровней и нумерации) → опциональные плагины.
@@ -91,7 +91,7 @@
 # Изображения и медиа
 
 * Все бинарные объекты → `/assets/`.
-* Имена: `img-0001.png`, `table-0003.png`, `eq-0002.svg` (если docling отдаёт формулы картинками), расширение по исходным данным.
+* Имена: `img-0001.png`, `table-0003.png`, `eq-0002.svg` (если custom XML parser отдаёт формулы картинками), расширение по исходным данным.
 * Внутренние ссылки обновляются на относительные: `![caption](../assets/img-0001.png)`.
 * Дедубликация: по SHA256 содержимого; повторно не копируем, ссылку даём на существующий файл.
 
@@ -158,14 +158,14 @@ $ doc2chapmd input.docx -o out/ --no-frontmatter
 # Псевдокод оркестрации
 
 ```python
-from core.adapters.docling_adapter import parse_with_docling
+from core.adapters.document_parser import parse_document
 from core.transforms import normalize, structure_fixes
 from core.split.chapter_splitter import split_into_chapters
 from core.render.assets_exporter import export_assets
 from core.render.markdown_renderer import render_markdown
 from core.output import toc_builder, writer
 
-internal_doc, resources = parse_with_docling(path)
+internal_doc, resources = parse_document(path)
 internal_doc = normalize.run(internal_doc)
 internal_doc = structure_fixes.run(internal_doc)
 chapters = split_into_chapters(internal_doc, level=cfg.split.level)
@@ -190,7 +190,7 @@ writer.write_aux(index_md, manifest)
 * **`splitter.py`** → станет `chapter_splitter.py`, источник заголовков — узлы AST.
 * **`preprocess.py`** → часть логики переедет в `normalize.py` (мягкие переносы, пробелы, cleanup).
 * **`validators.py`** → верификация структуры (есть ли хотя бы один заголовок H1, нет ли пустых глав, дубликатов slug’ов).
-* **`mammoth_style_map.map`** больше не нужен (docling берёт на себя парсинг).
+* **`mammoth_style_map.map`** больше не нужен (custom XML parser берёт на себя парсинг).
 
 ---
 
@@ -212,11 +212,11 @@ writer.write_aux(index_md, manifest)
 # Риск‑зоны и решения
 
 * **Сломанные списки/таблицы** → нормализаторы.
-* **Формулы** → если docling отдаёт MathML/LaTeX — рендерить в `$...$`, иначе — как изображения с alt-текстом.
+* **Формулы** → если custom XML parser отдаёт MathML/LaTeX — рендерить в `$...$`, иначе — как изображения с alt-текстом.
 * **Межглавные перекрёстные ссылки** → минимально поддержать, не ломать текст; улучшать итеративно.
 
 ---
 
 # Вывод
 
-Архитектура изолирует docling на уровне адаптера и обеспечивает стабильный, детерминированный вывод: чистые Markdown‑главы и аккуратная папка ассетов. Следующий шаг — зафиксировать формат `InternalDoc` и поднять минимальный рабочий прототип (DOCX → 2–3 главы с картинками).
+Архитектура изолирует custom XML parser на уровне адаптера и обеспечивает стабильный, детерминированный вывод: чистые Markdown‑главы и аккуратная папка ассетов. Следующий шаг — зафиксировать формат `InternalDoc` и поднять минимальный рабочий прототип (DOCX → 2–3 главы с картинками).
