@@ -616,6 +616,10 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
             return True
         return False
 
+    def is_note_paragraph(text: str) -> bool:
+        """Check if paragraph text starts with note pattern."""
+        return bool(re.match(r'^\s*Примечание\s*–', text.strip()))
+
     def _clean_bash_prefix(line: str) -> str:
         """Remove leading '# ' used in doc formatting before commands."""
         m = re.match(r"^\s*#\s+(.*)$", line)
@@ -721,6 +725,8 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
 
                     if list_type:
                         text = f"- {text}"
+                    elif is_note_paragraph(text):
+                        text = f"> {text}"
                     inlines = [InlineText(content=text)]
                     blocks.append(Paragraph(inlines=inlines))
             elif paragraph_images:
