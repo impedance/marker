@@ -99,12 +99,18 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 │   ├── output/
 │   │   ├── file_naming.py            # ✅ Deterministic file naming
 │   │   ├── toc_builder.py            # ✅ TOC and manifest generation
-│   │   └── writer.py                 # ✅ File writing operations
+│   │   ├── writer.py                 # ✅ File writing operations
+│   │   └── hierarchical_writer.py    # ✅ Hierarchical file structure writing
 │   ├── numbering/                    # ✅ Complete numbering subsystem
 │   │   ├── auto_numberer.py          # ✅ Automatic heading numbering
 │   │   ├── heading_numbering.py      # ✅ Complex XML numbering extraction
 │   │   ├── md_numbering.py           # ✅ Markdown numbering utilities
 │   │   ├── validators.py             # ✅ Numbering validation
+│   │   └── __init__.py               # ✅ Package init
+│   ├── utils/                        # ✅ Utility modules
+│   │   ├── docx_utils.py             # ✅ DOCX processing utilities
+│   │   ├── text_processing.py        # ✅ Text manipulation utilities
+│   │   ├── xml_constants.py          # ✅ XML namespace and element constants
 │   │   └── __init__.py               # ✅ Package init
 │   └── pipeline.py                   # ✅ Pipeline orchestrator
 ├── tests/
@@ -119,20 +125,23 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 ├── samples/                          # ✅ Expected output examples
 ├── real-docs/                        # ✅ Real document samples for testing
 ├── output/                           # ✅ Generated output directory
-├── doc2chapmd.py                     # ✅ CLI entry point
+├── doc2chapmd.py                     # ✅ CLI entry point (Typer-based with rich output)
 ├── config.yaml                       # ✅ Default configuration
 ├── requirements.txt                  # ✅ Dependencies defined
-├── project_analysis.md               # ✅ Project analysis documentation
+├── GEMINI.md                         # ✅ Project overview documentation
+├── architecture.md                  # ✅ Detailed architecture documentation
 └── [debug/test files]                # ✅ Various debugging utilities
 ```
 
 ### 🔍 Project Architecture & Implementation Details
 
 #### **Document Parsing System:**
-- **Custom XML-based DOCX parsing** via `core/adapters/docx_parser.py`
+- **100% Custom XML parsing** - no external document libraries used
 - **Document parsing router** via `core/adapters/document_parser.py`
+- **Advanced XML-based DOCX parsing** via `core/adapters/docx_parser.py`
 - **WordprocessingML XML parsing** - direct extraction from DOCX ZIP archives
 - **Specialized numbering extraction** from `word/numbering.xml` and `word/styles.xml`
+- **Sophisticated content detection** - code blocks, tables, images with auto-caption detection
 
 #### **Numbering System Architecture:**
 - **Complex numbering subsystem** in `core/numbering/` (not just auto-numbering)
@@ -147,13 +156,20 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 - **Pattern-based style matching** for different languages
 - **Content reordering** via `content_reorder.py` for misplaced sections
 
+#### **Utility Modules:**
+- **`core/utils/docx_utils.py`** - DOCX file handling and XML processing utilities
+- **`core/utils/text_processing.py`** - Text manipulation and normalization utilities
+- **`core/utils/xml_constants.py`** - XML namespace constants and element definitions
+
 #### **Key Processing Flow:**
-1. **DOCX XML Extraction** → Parse ZIP archive, extract XML files
-2. **Numbering Analysis** → Parse Word's numbering system from XML
-3. **Content Structure** → Build hierarchical heading structure
-4. **Transform Pipeline** → Normalize, fix structure, reorder content
-5. **Chapter Splitting** → Split by heading levels into separate documents
-6. **Markdown Rendering** → Convert AST to clean Markdown
+1. **DOCX XML Extraction** → Parse ZIP archive, extract XML files using custom parsers
+2. **Numbering Analysis** → Parse Word's complex numbering system from XML
+3. **Content Structure** → Build hierarchical heading structure via chapter_extractor
+4. **Advanced Content Detection** → Detect code blocks, tables, images with captions
+5. **Transform Pipeline** → Normalize, fix structure, reorder content
+6. **Chapter Splitting** → Split by heading levels into separate documents
+7. **Asset Export** → Extract and save binary resources (images, etc.) with deduplication
+8. **Markdown Rendering** → Convert AST to clean Markdown with asset references
 
 ### 📚 Documentation & Explainability
 - **Update `README.md`** when new features are added, dependencies change, or setup steps are modified.
@@ -178,17 +194,19 @@ This file provides comprehensive guidance to Claude Code when working with Pytho
 - **`lxml`** - XML processing ✅ potential use for XML parsing
 - **`beautifulsoup4`** - HTML/XML parsing ✅ potential use
 - **`python-slugify`** - URL slug generation ✅ actively used for file naming
-- **`rich`** - Terminal formatting ✅ potential use for CLI output
+- **`rich`** - Terminal formatting ✅ actively used for CLI output
+- **`docling`** - Universal document parser ❌ **NOT USED** (listed but no actual imports)
 
-### 🔧 Custom XML Processing Stack
-- **`xml.etree.ElementTree`** - Core XML parsing (built-in Python)
-- **`zipfile`** - DOCX archive handling (built-in Python)
-- **`re`** - Regular expressions for pattern matching (built-in Python)
-- **Custom parsers** - All DOCX processing is done via custom XML parsers
+### 🔧 Document Processing Stack
+- **`xml.etree.ElementTree`** - Core XML parsing (built-in Python) ✅ actively used
+- **`zipfile`** - DOCX archive handling (built-in Python) ✅ actively used
+- **`re`** - Regular expressions for pattern matching (built-in Python) ✅ actively used
+- **Custom XML parsers** - 100% custom DOCX processing with specialized numbering extraction
+- **No external document libraries** - self-contained WordprocessingML parsing
 
 ### 🔄 Git Workflow
 - **Branch Strategy**:
-  - `main` - Production-ready code
+  - `master` - Production-ready code (main branch)
   - `develop` - Integration branch for features
   - `feature/*` - New features
   - `fix/*` - Bug fixes
