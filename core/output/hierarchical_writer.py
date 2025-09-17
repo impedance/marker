@@ -261,7 +261,7 @@ def _sanitize_dir_name(name: str) -> str:
     return sanitized
 
 
-def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: str | os.PathLike) -> List[Path]:
+def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: str | os.PathLike, custom_folder_name: Optional[str] = None) -> List[Path]:
     """
     Exports a DOCX into a folder hierarchy by headings with centralized images structure.
 
@@ -286,7 +286,7 @@ def export_docx_hierarchy_centralized(docx_path: str | os.PathLike, out_root: st
     
     # Extract document name from path and create document folder
     docx_path = Path(docx_path)
-    doc_name = _clean_filename(docx_path.stem)
+    doc_name = custom_folder_name or _clean_filename(docx_path.stem)
     doc_root = out_root / doc_name
     doc_root.mkdir(parents=True, exist_ok=True)
     

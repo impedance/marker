@@ -52,7 +52,8 @@ def create_safe_name(docx_path: Path) -> str:
 def convert_single_docx(
     docx_path: Path, 
     temp_output_dir: Path, 
-    converter_script: Path
+    converter_script: Path,
+    safe_name: str
 ) -> bool:
     """Convert a single DOCX file using the doc2chapmd converter."""
     try:
@@ -66,7 +67,8 @@ def convert_single_docx(
             "build",
             str(docx_path),
             "--out", str(temp_output_dir),
-            "--centralized-images"
+            "--centralized-images",
+            "--folder-name", safe_name
         ]
         
         result = subprocess.run(
@@ -194,7 +196,7 @@ def convert(
                 shutil.rmtree(temp_conversion_dir)
             
             # Convert the DOCX file
-            success = convert_single_docx(docx_path, temp_conversion_dir, converter)
+            success = convert_single_docx(docx_path, temp_conversion_dir, converter, safe_name)
             
             if success and temp_conversion_dir.exists():
                 # Create the archive

@@ -82,10 +82,14 @@ def build(
         True, "--centralized-images/--distributed-images", 
         help="Use centralized images structure (one images/ folder) vs distributed (images/ in each section)"
     ),
+    custom_folder_name: Optional[str] = typer.Option(
+        None, "--folder-name", 
+        help="Custom folder name for output (if not provided, uses document name)"
+    ),
 ):
     """Export DOCX into hierarchical chapter structure."""
     if centralized_images:
-        written = export_docx_hierarchy_centralized(docx, out)
+        written = export_docx_hierarchy_centralized(docx, out, custom_folder_name)
     else:
         written = export_docx_hierarchy(docx, out)
     for path in written:
