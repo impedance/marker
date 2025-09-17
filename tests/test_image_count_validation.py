@@ -51,7 +51,7 @@ class TestImageCountValidation:
 
     def test_sign_image_links_vs_png_files_count(self):
         """Основной тест: сравнение количества кастомных ссылок с количеством PNG файлов."""
-        output_dir = Path("test-output")
+        output_dir = Path("output")
         
         # Проверяем, что выходная директория существует
         if not output_dir.exists():

@@ -8,7 +8,7 @@ def _paragraph_text(paragraph: Paragraph) -> str:
 
 
 def test_cross_references_replaced_with_section_titles() -> None:
-    doc, _ = parse_document("real-docs/hrom-12-admin-foundations.docx")
+    doc, _ = parse_document("real-docs/hrom-admin-found.docx")
     paragraphs = [
         _paragraph_text(block)
         for block in doc.blocks
