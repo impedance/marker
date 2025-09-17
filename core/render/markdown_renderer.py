@@ -7,6 +7,12 @@ from core.model.internal_doc import (
     Inline,
 )
 
+def _escape_table_content(text: str) -> str:
+    """Escape markdown special characters in table cells."""
+    # Escape pipe characters that would break table structure
+    text = text.replace('|', '\\|')
+    return text
+
 def _render_inline(inline: Inline) -> str:
     """Renders a single inline element to its Markdown representation."""
     type = inline.type
@@ -18,7 +24,29 @@ def _render_inline(inline: Inline) -> str:
         return f"*{inline.content}*"
     if type == "link":
         return f"[{inline.content}]({inline.href})"
+    if type == "code":
+        return f"`{inline.content}`"
     raise ValueError(f"Unknown inline type: {type}")
+
+def _render_inline_for_table(inline: Inline) -> str:
+    """Renders a single inline element for table cells with proper escaping."""
+    rendered = _render_inline(inline)
+    return _escape_table_content(rendered)
+
+def _render_block_for_table(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
+    """Renders a block element for table cells with proper escaping."""
+    type = block.type
+    if type == "paragraph":
+        text = "".join(_render_inline_for_table(inline) for inline in block.inlines)
+        stripped = text.lstrip()
+        match = re.match(r"(?:[-*]\s+|\d+[.)]\s+)?#\s+(.*)", stripped)
+        if match:
+            command = match.group(1)
+            return f"```bash Terminal\n{command}\n```"
+        return text
+    # For other block types, render normally and then escape
+    rendered = _render_block(block, asset_map, document_name)
+    return _escape_table_content(rendered)
 
 def _clean_heading_text(text: str) -> str:
     """Remove leading numbering like '1', '1.2', '1.2.3', optional dots/brackets/dashes.
@@ -69,7 +97,7 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
         def _row(r) -> str:
             cells = []
             for cell in r.cells:
-                cell_parts = [_render_block(b, asset_map, document_name) for b in cell.blocks]
+                cell_parts = [_render_block_for_table(b, asset_map, document_name) for b in cell.blocks]
                 cells.append(" ".join(cell_parts).strip())
             return "| " + " | ".join(cells) + " |"
 

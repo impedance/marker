@@ -25,7 +25,12 @@ class Link(BaseModel):
     content: str
     href: str
 
-Inline = Union[Text, Bold, Italic, Link]
+class Code(BaseModel):
+    """Represents inline code."""
+    type: Literal["code"] = "code"
+    content: str
+
+Inline = Union[Text, Bold, Italic, Link, Code]
 
 # --- Block Elements ---
 

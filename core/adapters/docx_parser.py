@@ -194,6 +194,100 @@ def _text_of(p: ET.Element, section_map: Dict[str, str] = None) -> str:
     
     return full_text
 
+def _extract_formatted_inlines(p: ET.Element) -> List:
+    """Extract text with formatting information from paragraph runs."""
+    from core.model.internal_doc import Text, Code
+    
+    inlines = []
+    
+    # First pass: collect runs with their formatting info
+    runs_info = []
+    for run in p.findall("w:r", NS):
+        # Extract text from this run
+        text_parts = []
+        for t in run.findall("w:t", NS):
+            if t.text:
+                text_parts.append(t.text)
+        
+        if not text_parts:
+            continue
+            
+        text_content = "".join(text_parts)
+        
+        # Check if this run has monospace font formatting
+        rPr = run.find("w:rPr", NS)
+        is_code = False
+        
+        if rPr is not None:
+            # Check for font family indicating monospace/code
+            rFonts = rPr.find("w:rFonts", NS)
+            if rFonts is not None:
+                ascii_font = rFonts.attrib.get(f"{{{NS['w']}}}ascii", "")
+                if "mono" in ascii_font.lower() or "courier" in ascii_font.lower():
+                    is_code = True
+        
+        runs_info.append((text_content, is_code))
+    
+    # Second pass: merge consecutive runs with same formatting
+    if not runs_info:
+        return inlines
+        
+    current_text = runs_info[0][0]
+    current_is_code = runs_info[0][1]
+    
+    for text_content, is_code in runs_info[1:]:
+        if is_code == current_is_code:
+            # Same formatting, merge
+            current_text += text_content
+        else:
+            # Different formatting - check if we should merge anyway
+            should_merge = False
+            
+            # Check for pattern: code word + number (like "команда" + "1")
+            if current_is_code and not is_code:
+                # Current is code, next is text - check if text starts with number/identifier
+                if text_content and (text_content[0].isdigit() or text_content[0].isalnum()):
+                    # Check if we can split the text into identifier + rest
+                    identifier_match = ""
+                    for i, char in enumerate(text_content):
+                        if char.isalnum():
+                            identifier_match += char
+                        else:
+                            break
+                    
+                    if identifier_match and len(identifier_match) < len(text_content):
+                        # Merge the identifier part with current code
+                        current_text += identifier_match
+                        # Continue with remaining text as regular text
+                        should_merge = True
+                        remaining_text = text_content[len(identifier_match):]
+                        
+                        # Add the merged code element
+                        inlines.append(Code(content=current_text))
+                        
+                        # Start new element with remaining text
+                        current_text = remaining_text
+                        current_is_code = False
+                        continue
+            
+            if not should_merge:
+                # Create inline element and start new one
+                if current_is_code:
+                    inlines.append(Code(content=current_text))
+                else:
+                    inlines.append(Text(content=current_text))
+                
+                current_text = text_content
+                current_is_code = is_code
+    
+    # Add the last element
+    if current_is_code:
+        inlines.append(Code(content=current_text))
+    else:
+        inlines.append(Text(content=current_text))
+    
+    return inlines
+
 def _text_with_numbering(p: ET.Element) -> str:
     """Extract text from paragraph, preserving any numbering."""
     # First try to extract automatic numbering
@@ -540,9 +634,11 @@ def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: D
                 images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
                 for img in images:
                     blocks.append(img)
-                text = _text_of(p)
-                if text:
-                    blocks.append(Paragraph(inlines=[InlineText(content=text)]))
+                
+                # Extract formatted inlines from paragraph
+                formatted_inlines = _extract_formatted_inlines(p)
+                if formatted_inlines:
+                    blocks.append(Paragraph(inlines=formatted_inlines))
             cells.append(TableCell(blocks=blocks))
         return TableRow(cells=cells)
 
