@@ -203,16 +203,31 @@ def _extract_section_mapping(docx_root: ET.Element) -> Dict[str, str]:
     return section_map
 
 def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
-    """Replace cross-references like '(см. п.3.2.1)' with section titles."""
-    ref_pattern = r'\(см\.\s*п\.\s*([\d\.]+)\)'
-    
-    def replace_ref(match):
-        section_num = match.group(1)
-        if section_num in section_map:
-            return f'(см. п. {section_map[section_num]})'
-        return match.group(0)  # Return original if not found
-    
-    return re.sub(ref_pattern, replace_ref, text)
+    """Replace numeric cross-references with section titles when possible."""
+
+    if not text or not section_map:
+        return text
+
+    patterns = [
+        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
+        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
+    ]
+
+    def _replace(match: re.Match[str]) -> str:
+        number = match.group('number')
+        title = section_map.get(number)
+        if not title:
+            return match.group(0)
+
+        prefix = match.group('prefix')
+        prefix = re.sub(r'\s*$', ' ', prefix)
+        return f"{prefix}{title}"
+
+    result = text
+    for pattern in patterns:
+        result = pattern.sub(_replace, result)
+
+    return result
 
 def _text_of(p: ET.Element, section_map: Dict[str, str] = None) -> str:
     """Extract text from paragraph, including any manual numbering."""
