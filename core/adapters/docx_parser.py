@@ -394,9 +394,13 @@ def _get_mime_type_from_extension(ext: str) -> str:
     return mime_types.get(ext, 'application/octet-stream')
 
 def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
-                             all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> List[Image]:
-    """Find all images referenced in a paragraph and return Image blocks with captions."""
+                             all_paragraphs: List[ET.Element], style_map: Dict[str, str], 
+                             used_caption_paragraphs: set = None) -> Tuple[List[Image], Set[ET.Element]]:
+    """Find all images referenced in a paragraph and return Image blocks with captions and used caption paragraphs."""
     images = []
+    if used_caption_paragraphs is None:
+        used_caption_paragraphs = set()
+    caption_paragraphs_for_this_image = set()
     
     # Look for drawing elements that contain image references
     for drawing in p.findall('.//w:drawing', NS):
@@ -416,7 +420,9 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
                     resource_ref = media_images[full_path]
                     
                     # Find caption for this image, passing the image name
-                    caption = _find_caption_for_image(p, all_paragraphs, style_map, image_name)
+                    caption, caption_para = _find_caption_for_image_with_paragraph(p, all_paragraphs, style_map, image_name)
+                    if caption_para:
+                        caption_paragraphs_for_this_image.add(caption_para)
                     
                     # Create Image block
                     image = Image(
@@ -426,7 +432,7 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
                     )
                     images.append(image)
     
-    return images
+    return images, caption_paragraphs_for_this_image
 
 
 def _is_caption_paragraph(p: ET.Element, style_map: Dict[str, str]) -> bool:
@@ -502,7 +508,85 @@ def _find_seq_picnum_in_paragraph(p: ET.Element) -> str:
     return ""
 
 
-def _find_caption_for_image(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str], image_name: str = "") -> str:
+def _find_caption_for_image_with_paragraph(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str], image_name: str = "") -> Tuple[str, ET.Element | None]:
+    """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text. Returns (caption_text, caption_paragraph)."""
+    try:
+        img_index = all_paragraphs.index(image_para)
+        
+        # Strategy 1: Look for complete caption with number pattern in nearby paragraphs
+        for offset in range(-2, 4):  # Search both before and after image
+            para_index = img_index + offset
+            if 0 <= para_index < len(all_paragraphs):
+                para = all_paragraphs[para_index]
+                text = _extract_text_from_paragraph(para).strip()
+                
+                # Check if this paragraph contains a complete figure caption
+                figure_patterns = [
+                    r'(рисунок\s+[-–—]?\s*\d+\s*[-–—]\s*.+)',
+                    r'(рисунок\s+\d+\s*[-–—]\s*.+)',
+                    r'(рис\.\s*\d+\s*[-–—]\s*.+)',
+                    r'(figure\s+\d+\s*[-–—]\s*.+)',
+                    r'(fig\.\s*\d+\s*[-–—]\s*.+)'
+                ]
+                
+                for pattern in figure_patterns:
+                    match = re.search(pattern, text, re.IGNORECASE)
+                    if match:
+                        return match.group(1).strip(), para
+        
+        # Return original function result for fallback, without paragraph tracking
+        caption = _find_caption_for_image_original(image_para, all_paragraphs, style_map, image_name)
+        return caption, None
+        
+    except ValueError:
+        # image_para not found in all_paragraphs
+        pass
+    
+    return "", None
+
+def _should_reorder_command_before_image(current_para: ET.Element, next_para: ET.Element, 
+                                        current_text: str, style_map: Dict[str, str]) -> bool:
+    """Check if current paragraph contains a command that should be moved before image in next paragraph."""
+    # Check if next paragraph has an image
+    next_drawings = next_para.findall('.//w:drawing', NS)
+    if not next_drawings:
+        return False
+        
+    # Check if current paragraph looks like a command
+    command_patterns = [
+        r'^\s*(sudo\s+)?(docker|wget|curl|psql|createdb|apt|apt-get|dnf|systemctl|sh\b|touch|chmod|chown|echo|ls|cat|kubectl|helm|tldr|man\s+)\b',
+        r'^\s*[\w\.-]+\s+[\w\.-]+\s*$',  # Simple command pattern like "tldr tar"
+        r'^\s*[a-zA-Z_][a-zA-Z0-9_]*\s+[a-zA-Z0-9_\.-]+\s*$'  # Command with argument
+    ]
+    
+    if current_text:
+        for pattern in command_patterns:
+            if re.match(pattern, current_text.strip()):
+                return True
+                
+    # Also check if paragraph has code-style formatting - need to implement this check here
+    # Simplified code style check (copied from inside the function)
+    pPr = current_para.find("w:pPr", NS)
+    if pPr is not None:
+        pStyle = pPr.find("w:pStyle", NS)
+        if pStyle is not None:
+            sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
+            style_name = style_map.get(sid, sid) or sid
+            CODE_STYLE_NAME_PATTERNS = [
+                r".*Команда.*",
+                r".*Листинг.*", 
+                r".*Code.*",
+                r".*Код.*",
+                r"ROSA_ТКом",
+                r"ROSA_Команда_Таблица",
+            ]
+            for pattern in CODE_STYLE_NAME_PATTERNS:
+                if re.match(pattern, style_name, re.IGNORECASE):
+                    return True
+                    
+    return False
+
+def _find_caption_for_image_original(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str], image_name: str = "") -> str:
     """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text."""
     try:
         img_index = all_paragraphs.index(image_para)
@@ -631,7 +715,7 @@ def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: D
         for tc in tr.findall('w:tc', NS):
             blocks: List[Block] = []
             for p in tc.findall('w:p', NS):
-                images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
+                images, _ = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
                 for img in images:
                     blocks.append(img)
                 
@@ -762,6 +846,25 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
     
     # Get all paragraphs for caption detection
     all_paragraphs = body.findall(".//w:p", NS)
+    
+    # Track paragraphs that have been used as captions to avoid duplication
+    used_caption_paragraphs = set()
+    
+    # Detect command-image patterns that need reordering
+    commands_to_reorder = set()  # Set of paragraph indices that contain commands to reorder
+    body_elements = list(body)
+    
+    for i, el in enumerate(body_elements):
+        if el.tag == f"{{{NS['w']}}}p" and i + 1 < len(body_elements):
+            current_para = el
+            next_el = body_elements[i + 1]
+            
+            if next_el.tag == f"{{{NS['w']}}}p":  # Next element is also a paragraph
+                next_para = next_el
+                current_text = _text_of(current_para, section_map)
+                
+                if _should_reorder_command_before_image(current_para, next_para, current_text, style_map):
+                    commands_to_reorder.add(i)
 
     # --- Heuristics for code block detection ---
     yaml_key_re = re.compile(r"^(?:-\s+.*|\s*[\w\./\[\]-]+\s*:\s*.*)$")
@@ -856,6 +959,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         """Check if paragraph text starts with note pattern."""
         return bool(re.match(r'^\s*Примечание\s*–', text.strip()))
     
+    
     def is_table_caption(text: str) -> bool:
         """Check if paragraph text is a table caption that should not have dash prefix."""
         # Pattern for table captions - common patterns found in documents
@@ -886,15 +990,59 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         return m.group(1) if m else line
 
     prev_text: str = ""
-    for el in list(body):
+    
+    for i, el in enumerate(body_elements):
         if el.tag == f"{{{NS['w']}}}p":
             p = el
             lvl = heading_level(p, style_map, patterns)
             text = _text_of(p, section_map)
             list_type = _paragraph_list_type(p, style_nums, num_fmts)
-            paragraph_images = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map)
-            for image in paragraph_images:
-                blocks.append(image)
+            paragraph_images, caption_paras = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map, used_caption_paragraphs)
+            used_caption_paragraphs.update(caption_paras)
+            
+            # Special handling for command-image reordering
+            if i in commands_to_reorder and i + 1 < len(body_elements):
+                next_para = body_elements[i + 1]
+                if next_para.tag == f"{{{NS['w']}}}p":
+                    next_images, next_caption_paras = _find_images_in_paragraph(next_para, relationships, media_images, all_paragraphs, style_map, used_caption_paragraphs)
+                    used_caption_paragraphs.update(next_caption_paras)
+                    
+                    
+                    # Flush any pending code block first
+                    if code_acc:
+                        blocks.append(CodeBlock(code="\n".join(code_acc), language=code_lang, title=code_title))
+                        code_acc = []
+                        code_lang = None
+                        code_title = None
+                    
+                    # Add command as code block immediately
+                    if text:
+                        command_code = (_clean_bash_prefix(text)).strip()
+                        blocks.append(CodeBlock(code=command_code, language="bash", title="Terminal"))
+                    
+                    # Add current paragraph images (if any)
+                    for image in paragraph_images:
+                        blocks.append(image)
+                    
+                    # Add images from next paragraph  
+                    for next_image in next_images:
+                        blocks.append(next_image)
+                    
+                    prev_text = text
+                    continue
+            
+            # Skip paragraph if it was used as a caption
+            if p in used_caption_paragraphs:
+                # Add images even if text is skipped (to preserve order)
+                for image in paragraph_images:
+                    blocks.append(image)
+                continue
+                
+            # Skip paragraph if its images were already processed by command reordering  
+            if i > 0 and (i - 1) in commands_to_reorder and not text.strip():
+                # This is likely an image-only paragraph that was processed by the previous command
+                continue
+                
             if text:
                 # Style-based code detection (highest priority)
                 if is_code_style_paragraph(p):
@@ -914,6 +1062,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                             code_title = "Terminal"
                     code_acc.append((_clean_bash_prefix(text)).strip())
                     prev_text = text
+                    # Add images after processing code text (to preserve order)
+                    for image in paragraph_images:
+                        blocks.append(image)
                     continue
 
                 # If we are inside a code block, try to continue it
@@ -921,6 +1072,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                     if belongs_to_yaml(text):
                         code_acc.append(text.strip())
                         prev_text = text
+                        # Add images after processing yaml text (to preserve order)
+                        for image in paragraph_images:
+                            blocks.append(image)
                         continue
                     else:
                         flush_code()
@@ -928,6 +1082,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                     if belongs_to_bash(text):
                         code_acc.append((_clean_bash_prefix(text)).strip())
                         prev_text = text
+                        # Add images after processing bash text (to preserve order)
+                        for image in paragraph_images:
+                            blocks.append(image)
                         continue
                     else:
                         flush_code()
@@ -935,6 +1092,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                     if belongs_to_sql(text) or text.strip().endswith(";"):
                         code_acc.append(text.strip())
                         prev_text = text
+                        # Add images after processing sql text (to preserve order)
+                        for image in paragraph_images:
+                            blocks.append(image)
                         continue
                     else:
                         flush_code()
@@ -981,6 +1141,9 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
 
                     if started_code:
                         prev_text = text
+                        # Add images after processing started code text (to preserve order)
+                        for image in paragraph_images:
+                            blocks.append(image)
                         continue
 
                     if list_type and not is_table_caption(text):
@@ -989,8 +1152,10 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                         text = f"> {text}"
                     inlines = [InlineText(content=text)]
                     blocks.append(Paragraph(inlines=inlines))
-            elif paragraph_images:
-                pass
+            
+            # Add images after processing text (to preserve order as in DOCX)
+            for image in paragraph_images:
+                blocks.append(image)
             prev_text = text
         elif el.tag == f"{{{NS['w']}}}tbl":
             # If a code block was open before a table, flush it
