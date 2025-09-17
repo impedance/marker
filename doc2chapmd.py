@@ -89,7 +89,10 @@ def build(
 ):
     """Export DOCX into hierarchical chapter structure."""
     if centralized_images:
-        written = export_docx_hierarchy_centralized(docx, out, custom_folder_name)
+        if custom_folder_name is None:
+            written = export_docx_hierarchy_centralized(docx, out)
+        else:
+            written = export_docx_hierarchy_centralized(docx, out, custom_folder_name)
     else:
         written = export_docx_hierarchy(docx, out)
     for path in written:

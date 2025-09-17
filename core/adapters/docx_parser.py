@@ -28,6 +28,8 @@ from core.model.internal_doc import (
     Table,
     TableRow,
     TableCell,
+    ListBlock,
+    ListItem,
 )
 from core.model.resource_ref import ResourceRef
 
@@ -46,23 +48,54 @@ from core.utils.docx_utils import read_docx_part, styles_map, heading_level, sty
 
 # Function moved to core.utils.docx_utils
 
-def _paragraph_list_type(p: ET.Element, style_nums: Dict[str, str], num_fmts: Dict[str, str]) -> str | None:
-    """Return list format if paragraph is part of a list."""
+def _style_list_level(style_id: str, style_name: str) -> int:
+    """Infer list nesting level from style identifier or name."""
+    for value in (style_name, style_id):
+        if not value:
+            continue
+        match = re.search(r"(\d+)$", value.strip())
+        if match:
+            try:
+                number = int(match.group(1))
+                if number > 0:
+                    return max(0, number - 1)
+            except ValueError:
+                continue
+    return 0
+
+
+def _paragraph_list_info(
+    p: ET.Element,
+    style_nums: Dict[str, str],
+    num_fmts: Dict[str, str],
+    style_map: Dict[str, str],
+) -> tuple[str, int] | None:
+    """Return list format and nesting level if paragraph is part of a list."""
     pPr = p.find("w:pPr", NS)
     if pPr is None:
         return None
     numPr = pPr.find("w:numPr", NS)
     if numPr is not None:
         numId_el = numPr.find("w:numId", NS)
+        ilvl_el = numPr.find("w:ilvl", NS)
         if numId_el is not None:
             num_id = numId_el.attrib.get(f"{{{NS['w']}}}val", "")
-            return num_fmts.get(num_id)
+            level = 0
+            if ilvl_el is not None:
+                level_val = ilvl_el.attrib.get(f"{{{NS['w']}}}val", "0")
+                if isinstance(level_val, str) and level_val.isdigit():
+                    level = int(level_val)
+            fmt = num_fmts.get(num_id) if num_id else None
+            return (fmt or "bullet", level)
     pStyle = pPr.find("w:pStyle", NS)
     if pStyle is not None:
         sid = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
         num_id = style_nums.get(sid)
         if num_id:
-            return num_fmts.get(num_id)
+            fmt = num_fmts.get(num_id)
+            style_name = style_map.get(sid, "")
+            level = _style_list_level(sid, style_name)
+            return (fmt or "bullet", level)
     return None
 
 def _get_paragraph_number(p: ET.Element, numbering_xml: bytes = None) -> str:
@@ -194,98 +227,94 @@ def _text_of(p: ET.Element, section_map: Dict[str, str] = None) -> str:
     
     return full_text
 
-def _extract_formatted_inlines(p: ET.Element) -> List:
+def _extract_formatted_inlines(
+    p: ET.Element, section_map: Dict[str, str] | None = None
+) -> List:
     """Extract text with formatting information from paragraph runs."""
-    from core.model.internal_doc import Text, Code
-    
-    inlines = []
-    
-    # First pass: collect runs with their formatting info
-    runs_info = []
+    from core.model.internal_doc import Text, Code, Bold, Italic
+
+    segments: List[tuple[str, str]] = []
+
     for run in p.findall("w:r", NS):
-        # Extract text from this run
-        text_parts = []
-        for t in run.findall("w:t", NS):
-            if t.text:
-                text_parts.append(t.text)
-        
+        text_parts = [t.text for t in run.findall("w:t", NS) if t.text]
         if not text_parts:
             continue
-            
+
         text_content = "".join(text_parts)
-        
-        # Check if this run has monospace font formatting
         rPr = run.find("w:rPr", NS)
         is_code = False
-        
+        is_bold = False
+        is_italic = False
+
         if rPr is not None:
-            # Check for font family indicating monospace/code
             rFonts = rPr.find("w:rFonts", NS)
             if rFonts is not None:
-                ascii_font = rFonts.attrib.get(f"{{{NS['w']}}}ascii", "")
-                if "mono" in ascii_font.lower() or "courier" in ascii_font.lower():
-                    is_code = True
-        
-        runs_info.append((text_content, is_code))
-    
-    # Second pass: merge consecutive runs with same formatting
-    if not runs_info:
-        return inlines
-        
-    current_text = runs_info[0][0]
-    current_is_code = runs_info[0][1]
-    
-    for text_content, is_code in runs_info[1:]:
-        if is_code == current_is_code:
-            # Same formatting, merge
-            current_text += text_content
+                for attr in ("ascii", "hAnsi", "cs"):
+                    font_val = rFonts.attrib.get(f"{{{NS['w']}}}{attr}", "")
+                    if "mono" in font_val.lower() or "courier" in font_val.lower():
+                        is_code = True
+                        break
+            b_el = rPr.find("w:b", NS)
+            if b_el is not None:
+                bold_val = b_el.attrib.get(f"{{{NS['w']}}}val", "1")
+                if bold_val != "0":
+                    is_bold = True
+            i_el = rPr.find("w:i", NS)
+            if i_el is not None:
+                italic_val = i_el.attrib.get(f"{{{NS['w']}}}val", "1")
+                if italic_val != "0":
+                    is_italic = True
+
+        if is_code:
+            style = "code"
+        elif is_bold:
+            style = "bold"
+        elif is_italic:
+            style = "italic"
         else:
-            # Different formatting - check if we should merge anyway
-            should_merge = False
-            
-            # Check for pattern: code word + number (like "команда" + "1")
-            if current_is_code and not is_code:
-                # Current is code, next is text - check if text starts with number/identifier
-                if text_content and (text_content[0].isdigit() or text_content[0].isalnum()):
-                    # Check if we can split the text into identifier + rest
-                    identifier_match = ""
-                    for i, char in enumerate(text_content):
-                        if char.isalnum():
-                            identifier_match += char
-                        else:
-                            break
-                    
-                    if identifier_match and len(identifier_match) < len(text_content):
-                        # Merge the identifier part with current code
-                        current_text += identifier_match
-                        # Continue with remaining text as regular text
-                        should_merge = True
-                        remaining_text = text_content[len(identifier_match):]
-                        
-                        # Add the merged code element
-                        inlines.append(Code(content=current_text))
-                        
-                        # Start new element with remaining text
-                        current_text = remaining_text
-                        current_is_code = False
-                        continue
-            
-            if not should_merge:
-                # Create inline element and start new one
-                if current_is_code:
-                    inlines.append(Code(content=current_text))
-                else:
-                    inlines.append(Text(content=current_text))
-                
-                current_text = text_content
-                current_is_code = is_code
-    
-    # Add the last element
-    if current_is_code:
-        inlines.append(Code(content=current_text))
-    else:
-        inlines.append(Text(content=current_text))
-    
+            style = "text"
+
+        if segments and segments[-1][0] == style:
+            segments[-1] = (style, segments[-1][1] + text_content)
+        else:
+            segments.append((style, text_content))
+
+    if not segments:
+        return []
+
+    while segments:
+        style, content = segments[0]
+        stripped = content.lstrip()
+        if stripped:
+            if stripped != content:
+                segments[0] = (style, stripped)
+            break
+        segments.pop(0)
+
+    while segments:
+        style, content = segments[-1]
+        stripped = content.rstrip()
+        if stripped:
+            if stripped != content:
+                segments[-1] = (style, stripped)
+            break
+        segments.pop()
+
+    inlines: List = []
+    for style, content in segments:
+        if not content:
+            continue
+        if section_map:
+            content = _replace_cross_references(content, section_map)
+        if style == "code":
+            inlines.append(Code(content=content))
+        elif style == "bold":
+            inlines.append(Bold(content=content))
+        elif style == "italic":
+            inlines.append(Italic(content=content))
+        else:
+            inlines.append(Text(content=content))
+
     return inlines
 
 def _text_with_numbering(p: ET.Element) -> str:
@@ -990,13 +1019,47 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         return m.group(1) if m else line
 
     prev_text: str = ""
+    list_stack: List[tuple[ListBlock, int, bool]] = []
+
+    def flush_lists() -> None:
+        list_stack.clear()
+
+    def ensure_list_block(level: int, ordered: bool) -> ListBlock:
+        nonlocal list_stack
+        while list_stack:
+            current_block, current_level, current_ordered = list_stack[-1]
+            if level < current_level or (level == current_level and current_ordered != ordered):
+                list_stack.pop()
+                continue
+            break
+
+        if not list_stack:
+            new_block = ListBlock(ordered=ordered)
+            blocks.append(new_block)
+            list_stack.append((new_block, level, ordered))
+            return new_block
+
+        current_block, current_level, _ = list_stack[-1]
+        if level == current_level:
+            return current_block
+
+        parent_block, _, _ = list_stack[-1]
+        if parent_block.items:
+            parent_item = parent_block.items[-1]
+        else:
+            parent_item = ListItem(blocks=[])
+            parent_block.items.append(parent_item)
+        new_block = ListBlock(ordered=ordered)
+        parent_item.blocks.append(new_block)
+        list_stack.append((new_block, level, ordered))
+        return new_block
     
     for i, el in enumerate(body_elements):
         if el.tag == f"{{{NS['w']}}}p":
             p = el
             lvl = heading_level(p, style_map, patterns)
             text = _text_of(p, section_map)
-            list_type = _paragraph_list_type(p, style_nums, num_fmts)
+            list_info = _paragraph_list_info(p, style_nums, num_fmts, style_map)
             paragraph_images, caption_paras = _find_images_in_paragraph(p, relationships, media_images, all_paragraphs, style_map, used_caption_paragraphs)
             used_caption_paragraphs.update(caption_paras)
             
@@ -1100,6 +1163,8 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                         flush_code()
 
                 if lvl:
+                    if list_stack:
+                        flush_lists()
                     try:
                         numbered_heading = next(heading_iter)
                         level = min(numbered_heading.level, 6)
@@ -1146,18 +1211,40 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                             blocks.append(image)
                         continue
 
-                    if list_type and not is_table_caption(text):
-                        text = f"- {text}"
-                    elif is_note_paragraph(text):
+                    if list_info and not is_table_caption(text):
+                        fmt, list_level = list_info
+                        ordered = fmt not in {"bullet", "none"}
+                        target_list = ensure_list_block(list_level, ordered)
+                        list_item = ListItem(blocks=[])
+                        target_list.items.append(list_item)
+                        formatted_inlines = _extract_formatted_inlines(p, section_map)
+                        if formatted_inlines:
+                            list_item.blocks.append(Paragraph(inlines=formatted_inlines))
+                        else:
+                            list_item.blocks.append(Paragraph(inlines=[InlineText(content=text)]))
+                        for image in paragraph_images:
+                            list_item.blocks.append(image)
+                        prev_text = text
+                        continue
+                    else:
+                        if list_stack:
+                            flush_lists()
+
+                    if is_note_paragraph(text):
                         text = f"> {text}"
                     inlines = [InlineText(content=text)]
                     blocks.append(Paragraph(inlines=inlines))
-            
+            else:
+                if list_stack:
+                    flush_lists()
+
             # Add images after processing text (to preserve order as in DOCX)
             for image in paragraph_images:
                 blocks.append(image)
             prev_text = text
         elif el.tag == f"{{{NS['w']}}}tbl":
+            if list_stack:
+                flush_lists()
             # If a code block was open before a table, flush it
             flush_code()
             table_block = _parse_table(el, relationships, media_images, all_paragraphs, style_map)

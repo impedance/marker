@@ -1,10 +1,11 @@
 import re
-from typing import Dict
+from typing import Dict, List
 
 from core.model.internal_doc import (
     InternalDoc,
     Block,
     Inline,
+    ListBlock,
 )
 
 def _escape_table_content(text: str) -> str:
@@ -60,6 +61,49 @@ def _clean_heading_text(text: str) -> str:
     pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+(?=[.\s]))\.?\)?\s*(?:[-–—]\s*)?"
     return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
 
+def _escape_list_item_text(text: str) -> str:
+    """Escape leading blockquote markers inside list items."""
+    stripped = text.lstrip()
+    if not stripped:
+        return text
+    if stripped.startswith(">") and not stripped.startswith("\\>"):
+        leading = text[: len(text) - len(stripped)]
+        return f"{leading}\\{stripped}"
+    return text
+
+def _render_list_block(
+    list_block: ListBlock,
+    asset_map: Dict[str, str],
+    level: int = 0,
+    document_name: str = "",
+) -> str:
+    """Render a list block with proper indentation and nested items."""
+    lines: List[str] = []
+    for index, item in enumerate(list_block.items, start=1):
+        marker = f"{index}. " if list_block.ordered else "- "
+        prefix = "  " * level
+        item_blocks = list(item.blocks)
+        first_line = ""
+        if item_blocks and getattr(item_blocks[0], "type", None) == "paragraph":
+            first_paragraph = item_blocks.pop(0)
+            first_line = "".join(_render_inline(inline) for inline in first_paragraph.inlines).strip()
+            first_line = _escape_list_item_text(first_line)
+        lines.append(f"{prefix}{marker}{first_line}".rstrip())
+        for child in item_blocks:
+            if getattr(child, "type", None) == "list":
+                rendered_child = _render_list_block(child, asset_map, level + 1, document_name)
+                if rendered_child:
+                    lines.extend(rendered_child.splitlines())
+                continue
+            rendered_child = _render_block(child, asset_map, document_name)
+            child_lines = rendered_child.splitlines() if rendered_child else [""]
+            for child_line in child_lines:
+                if child_line:
+                    lines.append(f"{prefix}  {child_line}")
+                else:
+                    lines.append("")
+    return "\n".join(lines)
+
 def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
     """Renders a single block element to its Markdown representation."""
     type = block.type
@@ -67,6 +111,8 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
         adjusted_level = max(1, block.level - 1)
         clean_text = _clean_heading_text(block.text)
         return f"{'#' * adjusted_level} {clean_text}"
+    if type == "list":
+        return _render_list_block(block, asset_map, 0, document_name)
     if type == "paragraph":
         text = "".join(_render_inline(inline) for inline in block.inlines)
         stripped = text.lstrip()
@@ -124,7 +170,7 @@ def render_markdown(doc: InternalDoc, asset_map: Dict[str, str], document_name: 
     prev_list = False
     for block in doc.blocks:
         rendered = _render_block(block, asset_map, document_name)
-        is_list = rendered.lstrip().startswith("- ")
+        is_list = getattr(block, "type", None) == "list"
         if is_list:
             if not prev_list and markdown_lines:
                 markdown_lines.append("")

@@ -3,6 +3,7 @@ pydantic
 pyyaml
 pytest
 lxml
+python-docx
 beautifulsoup4
 python-slugify
 rich
