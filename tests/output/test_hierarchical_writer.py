@@ -54,6 +54,8 @@ def test_collect_sections_splits_blocks_correctly():
     assert titles == [
         "Chapter 1",
         "Section 1",
+        "Topic A",
+        "Topic B",
         "Section 2",
         "Chapter 2",
     ]
@@ -61,6 +63,8 @@ def test_collect_sections_splits_blocks_correctly():
     assert numbers == [
         [1],
         [1, 1],
+        [1, 1, 1],
+        [1, 1, 2],
         [1, 2],
         [2],
     ]
@@ -83,6 +87,8 @@ def test_export_docx_hierarchy_creates_structure(tmp_path, monkeypatch):
     expected = {
         doc_dir / "010000.chapter-1" / "0.index.md",  # lowercase after _transliterate fix
         doc_dir / "010000.chapter-1" / "010100.section-1.md",  # lowercase after _transliterate fix
+        doc_dir / "010000.chapter-1" / "010101.topic-a.md",
+        doc_dir / "010000.chapter-1" / "010102.topic-b.md",
         doc_dir / "010000.chapter-1" / "010200.section-2.md",  # lowercase after _transliterate fix
         doc_dir / "020000.chapter-2" / "0.index.md",  # lowercase after _transliterate fix
     }
@@ -115,8 +121,12 @@ def test_appendix_sections_do_not_absorb_previous_content() -> None:
     sections = _collect_sections(doc.blocks)
 
     h1_sections = {sec.title: sec for sec in sections if sec.level == 1}
+    section_titles = {sec.title for sec in sections}
     assert "Конфигурация демонов" in h1_sections
     assert "Протоколы" in h1_sections
+    assert "Пассивные проверки" in section_titles
+    assert "Получение списка активных проверок" in section_titles
+    assert "Установка unixODBC" in section_titles
 
     def _paragraph_texts(section):
         return [

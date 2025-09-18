@@ -35,6 +35,10 @@ def _split_number_and_title(text: str) -> Tuple[List[int], str, bool]:
     # Try new structured extraction first
     number_str, title = extract_heading_number_and_title(s)
     if number_str:
+        if title:
+            nested_number, nested_title = extract_heading_number_and_title(title)
+            if nested_number and nested_title and extract_letter_index(nested_number) > 0:
+                number_str, title = nested_number, nested_title
         # Handle alphabetic numbering
         letter_index = extract_letter_index(number_str)
         if letter_index > 0:
@@ -96,78 +100,58 @@ def _find_min_heading_level(blocks: list) -> int:
 
 
 def _collect_sections(blocks: list) -> List[_Section]:
-    """Breaks blocks into hierarchical sections."""
+    """Break blocks into hierarchical sections preserving numbering depth."""
     sections: List[_Section] = []
-    cur_h1: Optional[_Section] = None
-    cur_h2_intro: Optional[_Section] = None
+    stack: List[_Section] = []
     h1_counter = 0
     has_numeric_h1 = False
-
     min_level = _find_min_heading_level(blocks)
-
-    def flush_h2() -> None:
-        nonlocal cur_h2_intro
-        if cur_h2_intro and cur_h2_intro.blocks:
-            sections.append(cur_h2_intro)
-        cur_h2_intro = None
+    anon_counters: dict[tuple[int, Tuple[int, ...]], int] = {}
 
     for blk in blocks:
         if getattr(blk, "type", None) == "heading":
             text = blk.text or ""
             lvl = blk.level
             nums, ttl, is_letter = _split_number_and_title(text)
-            normalized_lvl = lvl - min_level + 1
-
+            normalized_lvl = max(1, lvl - min_level + 1)
             cleaned_title = clean_heading_text(ttl or text)
 
-            if normalized_lvl == 1:
-                flush_h2()
+            level_from_numbers = len(nums) if nums else normalized_lvl
+            effective_level = max(normalized_lvl, level_from_numbers)
+
+            while stack and stack[-1].level >= effective_level:
+                stack.pop()
+
+            if effective_level == 1:
                 if nums:
                     number = [nums[0]]
                     if not is_letter:
                         has_numeric_h1 = True
-                    title = cleaned_title
                 else:
                     h1_counter += 1
                     number = [h1_counter]
-                    title = cleaned_title
                     has_numeric_h1 = True
-                cur_h1 = _Section(normalized_lvl, number, title, [blk], is_letter=is_letter)
-                sections.append(cur_h1)
+                section = _Section(effective_level, number, cleaned_title, [blk], is_letter=is_letter)
+                sections.append(section)
+                stack.append(section)
                 continue
-            if normalized_lvl == 2 and nums:
-                flush_h2()
-                if len(nums) >= 2:
-                    cur_h2_intro = _Section(
-                        normalized_lvl,
-                        [nums[0], nums[1]],
-                        cleaned_title,
-                        [blk],
-                        is_letter=is_letter,
-                    )
-                else:
-                    cur_h2_intro = _Section(
-                        normalized_lvl,
-                        nums + [0],
-                        cleaned_title,
-                        [blk],
-                        is_letter=is_letter,
-                    )
-                continue
-            if normalized_lvl >= 3 and nums:
-                target = cur_h2_intro or cur_h1
-                if target:
-                    target.blocks.append(blk)
-                continue
-            target = cur_h2_intro or cur_h1
-            if target:
-                target.blocks.append(blk)
-            continue
-        target = cur_h2_intro or cur_h1
-        if target:
-            target.blocks.append(blk)
 
-    flush_h2()
+            parent_number: Tuple[int, ...] = tuple(stack[-1].number) if stack else tuple()
+            if nums:
+                number = nums[:effective_level]
+            else:
+                key = (effective_level, parent_number)
+                anon_counters[key] = anon_counters.get(key, 0) + 1
+                number = list(parent_number) + [anon_counters[key]]
+
+            section = _Section(effective_level, number, cleaned_title, [blk], is_letter=is_letter)
+            sections.append(section)
+            stack.append(section)
+            continue
+
+        if stack:
+            stack[-1].blocks.append(blk)
+
     if not has_numeric_h1:
         _normalize_letter_sections(sections)
     return sections

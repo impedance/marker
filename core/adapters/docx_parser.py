@@ -284,13 +284,14 @@ def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
     if not text or not section_map:
         return text
 
+    page_suffix = r'(?:\s*\d{1,4})?'
     patterns = [
-        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
-        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*)', re.IGNORECASE),
-        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*)', re.IGNORECASE),
-        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
-        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*)', re.IGNORECASE),
-        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*)', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>п\.\s*)(?P<number>\d+(?:\.\d+)*){page_suffix}', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>п\.\s*)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*){page_suffix}', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>п\.\s*)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*){page_suffix}', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>\d+(?:\.\d+)*){page_suffix}', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*){page_suffix}', re.IGNORECASE),
+        re.compile(rf'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*){page_suffix}', re.IGNORECASE),
     ]
 
     def _replace(match: re.Match[str]) -> str:
@@ -298,6 +299,16 @@ def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
         title: str | None = None
         for key in _section_reference_keys(raw_number):
             title = section_map.get(key)
+            if title:
+                break
+            trimmed = key
+            while trimmed and trimmed[-1].isdigit():
+                trimmed = trimmed[:-1].rstrip('. ')
+                if not trimmed:
+                    break
+                title = section_map.get(trimmed)
+                if title:
+                    break
             if title:
                 break
         if not title:

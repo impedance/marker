@@ -57,3 +57,20 @@ def test_letter_appendix_references_are_replaced() -> None:
 
     assert "п.Д.12" not in appendix_d_reference
     assert "п. Траппер-элементы данных" in appendix_d_reference
+
+
+def test_cross_reference_page_numbers_removed() -> None:
+    doc, _ = parse_document("docs-work/rukovod_adminis_32eks-_monit-2.3.0.docx")
+    paragraphs = [
+        _paragraph_text(block)
+        for block in doc.blocks
+        if isinstance(block, Paragraph)
+    ]
+
+    foreach_reference = next(
+        text
+        for text in paragraphs
+        if "foreach" in text and "п." in text
+    )
+
+    assert "339" not in foreach_reference

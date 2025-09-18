@@ -149,6 +149,7 @@ class TestCleanHeadingText:
         assert clean_heading_text("Б.1 Протоколы") == "Протоколы"
         assert clean_heading_text("Приложение А. Конфигурация демонов") == "Конфигурация демонов"
         assert clean_heading_text("В.2.3 Детали реализации") == "Детали реализации"
+        assert clean_heading_text("Ж.1 Функции агрегации339") == "Функции агрегации"
         assert clean_heading_text("A.1 Configuration") == "Configuration"
         assert clean_heading_text("Appendix B Implementation") == "Implementation"
     

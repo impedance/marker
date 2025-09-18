@@ -24,8 +24,16 @@ def clean_heading_text(text: str) -> str:
     """
     # Try structured extraction first (more reliable)
     number, title = extract_heading_number_and_title(text)
+    def _strip_trailing_digits(value: str) -> str:
+        return re.sub(r'(?<=\S)\d{2,}$', '', value).rstrip()
+
     if number and title:
-        return title
+        result_title = title
+        if extract_letter_index(number) == 0:
+            nested_number, nested_title = extract_heading_number_and_title(title)
+            if nested_number and nested_title and extract_letter_index(nested_number) > 0:
+                result_title = nested_title
+        return _strip_trailing_digits(result_title)
     
     # Fallback to regex patterns for edge cases
     patterns = [
@@ -38,9 +46,9 @@ def clean_heading_text(text: str) -> str:
     for pattern in patterns:
         result = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
         if result != text:  # If pattern matched and changed the text
-            return result
-            
-    return text.strip()
+            return _strip_trailing_digits(result)
+
+    return _strip_trailing_digits(text.strip())
 
 
 def extract_heading_number_and_title(text: str) -> Tuple[str, str]:
