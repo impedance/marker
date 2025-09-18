@@ -23,8 +23,51 @@ _HEADING_RE_DASH = re.compile(r"^(\d+(?:\.\d+)*)\s*[-–—]\s*(.+)$")
 LETTER_NUMBER_BASE = 60
 
 
-def _split_number_and_title(text: str) -> Tuple[List[int], str, bool]:
+def _analyze_document_numbering_scheme(blocks: list) -> str:
+    """Analyze the document to determine the primary numbering scheme.
+    
+    Returns:
+        str: 'alphanumeric' if document uses letter-based numbering,
+             'numeric' if document uses standard numeric numbering,
+             'mixed' if both are present
+    """
+    letter_headings = 0
+    numeric_headings = 0
+    min_level = _find_min_heading_level(blocks)
+    
+    for blk in blocks:
+        if getattr(blk, "type", None) == "heading":
+            text = blk.text or ""
+            lvl = blk.level
+            normalized_lvl = max(1, lvl - min_level + 1)
+            
+            # Only analyze top-level headings for scheme detection
+            if normalized_lvl == 1:
+                number_str, title = extract_heading_number_and_title(text)
+                if number_str:
+                    letter_index = extract_letter_index(number_str)
+                    if letter_index > 0:
+                        letter_headings += 1
+                    elif re.match(r'^\d+', number_str):
+                        numeric_headings += 1
+    
+    # Determine scheme based on analysis
+    if letter_headings > 0 and numeric_headings == 0:
+        return 'alphanumeric'
+    elif numeric_headings > 0 and letter_headings == 0:
+        return 'numeric'
+    elif letter_headings > 0 and numeric_headings > 0:
+        return 'mixed'
+    else:
+        return 'numeric'  # Default fallback
+
+
+def _split_number_and_title(text: str, numbering_scheme: str = 'mixed') -> Tuple[List[int], str, bool]:
     """Splits heading text into numbering and title.
+
+    Args:
+        text: The heading text to split
+        numbering_scheme: 'numeric', 'alphanumeric', or 'mixed' to control processing
 
     Returns:
         Tuple[List[int], str, bool]: Parsed number components, title, and
@@ -39,19 +82,21 @@ def _split_number_and_title(text: str) -> Tuple[List[int], str, bool]:
             nested_number, nested_title = extract_heading_number_and_title(title)
             if nested_number and nested_title and extract_letter_index(nested_number) > 0:
                 number_str, title = nested_number, nested_title
-        # Handle alphabetic numbering
-        letter_index = extract_letter_index(number_str)
-        if letter_index > 0:
-            # For letter-based numbering like "Б.1", "Приложение А"
-            # Extract sub-numbers if any (e.g., "Б.1.2" -> [2, 1, 2])
-            sub_parts = re.findall(r'\d+', number_str)
-            if sub_parts:
-                nums = [LETTER_NUMBER_BASE + letter_index] + [int(x) for x in sub_parts]
-            else:
-                nums = [LETTER_NUMBER_BASE + letter_index]
-            return nums, title, True
+        
+        # Handle alphabetic numbering (only if scheme allows it)
+        if numbering_scheme in ('alphanumeric', 'mixed'):
+            letter_index = extract_letter_index(number_str)
+            if letter_index > 0:
+                # For letter-based numbering like "Б.1", "Приложение А"
+                # Extract sub-numbers if any (e.g., "Б.1.2" -> [2, 1, 2])
+                sub_parts = re.findall(r'\d+', number_str)
+                if sub_parts:
+                    nums = [LETTER_NUMBER_BASE + letter_index] + [int(x) for x in sub_parts]
+                else:
+                    nums = [LETTER_NUMBER_BASE + letter_index]
+                return nums, title, True
 
-        # Handle numeric numbering
+        # Handle numeric numbering (always available)
         if re.match(r'^\d+', number_str):
             nums = [int(x) for x in number_str.split(".")]
             return nums, title, False
@@ -107,12 +152,15 @@ def _collect_sections(blocks: list) -> List[_Section]:
     has_numeric_h1 = False
     min_level = _find_min_heading_level(blocks)
     anon_counters: dict[tuple[int, Tuple[int, ...]], int] = {}
+    
+    # Analyze document numbering scheme to determine processing approach
+    numbering_scheme = _analyze_document_numbering_scheme(blocks)
 
     for blk in blocks:
         if getattr(blk, "type", None) == "heading":
             text = blk.text or ""
             lvl = blk.level
-            nums, ttl, is_letter = _split_number_and_title(text)
+            nums, ttl, is_letter = _split_number_and_title(text, numbering_scheme)
             normalized_lvl = max(1, lvl - min_level + 1)
             cleaned_title = clean_heading_text(ttl or text)
 
@@ -152,8 +200,16 @@ def _collect_sections(blocks: list) -> List[_Section]:
         if stack:
             stack[-1].blocks.append(blk)
 
-    if not has_numeric_h1:
+    # Apply normalization based on detected numbering scheme
+    if numbering_scheme == 'alphanumeric' and not has_numeric_h1:
         _normalize_letter_sections(sections)
+    elif numbering_scheme == 'mixed':
+        # For mixed documents, keep original numbering to avoid collisions
+        # Letter sections keep high numbers (LETTER_NUMBER_BASE + N)
+        # Numeric sections keep low numbers (1, 2, 3...)
+        pass
+    # For 'numeric' scheme, no letter normalization needed
+    
     return sections
 
 

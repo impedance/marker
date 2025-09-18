@@ -97,9 +97,15 @@ def heading_level(paragraph: ET.Element, style_map: Dict[str, str],
                 match = re.match(pattern, style_name, re.IGNORECASE)
                 if match:
                     try:
+                        # Special case for ROSA styles (no number group)
+                        if any(rosa_style in pattern.upper() for rosa_style in ["ROSA_ПРИЛОЖЕНИЕ", "ROSAA", "ROSAFB"]):
+                            return 1  # Top-level heading
                         level = int(match.group(1))
                         return level if 1 <= level <= 9 else None
                     except (ValueError, IndexError):
+                        # If no group 1, might be special ROSA patterns
+                        if any(rosa_style in style_name.upper() for rosa_style in ["ROSA_ПРИЛОЖЕНИЕ", "ROSAA", "ROSAFB"]):
+                            return 1
                         continue
                         
             # Also try styleId like Heading1

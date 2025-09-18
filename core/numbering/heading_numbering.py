@@ -6,11 +6,9 @@ from typing import Dict, List, Optional, Tuple
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 SERVICE_HEADINGS = {
-    "содержание",
-    "перечень сокращений",
+    # Removed most service headings to allow document structure headings
+    # Only keep very specific patterns that should never be chapters
     "аннотация",
-    "приложение",
-    "приложения",
 }
 
 @dataclass

@@ -243,7 +243,10 @@ def _extract_section_mapping(docx_root: ET.Element) -> Dict[str, str]:
 
         if pStyle is not None:
             style_val = pStyle.get(f"{{{NS['w']}}}val", '')
-            if 'heading' in style_val.lower() or style_val.lower().startswith('toc'):
+            if ('heading' in style_val.lower() or 
+                style_val.lower().startswith('toc') or
+                'rosa_приложение' in style_val.lower() or
+                style_val.lower().startswith('rosa')):
                 is_heading = True
 
         if outlineLvl is not None:

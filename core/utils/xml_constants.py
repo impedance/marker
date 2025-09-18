@@ -19,4 +19,7 @@ DEFAULT_HEADING_PATTERNS = [
     r"^Überschrift\s*(\d)$",       # German
     r"^Encabezado\s*(\d)$",        # Spanish
     r".*\bheading\s*(\d)$",        # fallback lowercase '... heading 2'
+    r"^ROSA_ПРИЛОЖЕНИЕ$",          # Special ROSA appendix style (level 1)
+    r"^ROSAa$",                    # ROSA table of contents style (level 1)  
+    r"^ROSAfb$",                   # ROSA appendix style (level 1)
 ]
