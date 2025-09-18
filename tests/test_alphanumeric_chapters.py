@@ -5,6 +5,7 @@ import pytest
 from core.model.internal_doc import Heading, InternalDoc, Paragraph
 from core.output.file_naming import chapter_index_from_h1, generate_chapter_filename
 from core.output.hierarchical_writer import LETTER_NUMBER_BASE, export_docx_hierarchy
+from core.render.markdown_renderer import render_markdown
 from core.utils.text_processing import (
     clean_heading_text,
     extract_heading_number_and_title,
@@ -305,6 +306,7 @@ class TestHierarchicalWriterAlphanumeric:
         assert any(name.startswith(numeric_prefix) for name in top_dirs)
         assert any(name.startswith(letter_a_prefix) for name in top_dirs)
         assert any(name.startswith(letter_b_prefix) for name in top_dirs)
+        assert all("prilozhenie" not in name for name in top_dirs)
 
         appendix_a_dir = next(
             doc_root / name for name in top_dirs if name.startswith(letter_a_prefix)
@@ -347,7 +349,28 @@ class TestHierarchicalWriterAlphanumeric:
         top_dirs = sorted(item.name for item in doc_root.iterdir() if item.is_dir())
         assert top_dirs[0].startswith("010000")
         assert top_dirs[1].startswith("020000")
+        assert all("prilozhenie" not in name for name in top_dirs)
 
         appendix_a_dir = doc_root / top_dirs[0]
         appendix_a_files = {p.name for p in appendix_a_dir.iterdir()}
         assert any(name.startswith("0101") for name in appendix_a_files)
+
+
+class TestMarkdownRendering:
+    """Tests for Markdown rendering of alphanumeric headings."""
+
+    def test_render_heading_removes_letter_number_prefix(self):
+        """Render headings without preserving letter-based numbering."""
+        doc = InternalDoc(
+            blocks=[
+                Heading(level=1, text="Приложение Б. Протоколы"),
+                Heading(level=2, text="Б.8.1 Триггерные события"),
+            ]
+        )
+
+        rendered = render_markdown(doc, {})
+        lines = rendered.splitlines()
+
+        assert lines[0] == "# Протоколы"
+        assert lines[1] == ""
+        assert lines[2] == "# Триггерные события"

@@ -7,6 +7,7 @@ from core.model.internal_doc import (
     Inline,
     ListBlock,
 )
+from core.utils.text_processing import clean_heading_text
 
 def _escape_table_content(text: str) -> str:
     """Escape markdown special characters in table cells."""
@@ -48,18 +49,6 @@ def _render_block_for_table(block: Block, asset_map: Dict[str, str], document_na
     # For other block types, render normally and then escape
     rendered = _render_block(block, asset_map, document_name)
     return _escape_table_content(rendered)
-
-def _clean_heading_text(text: str) -> str:
-    """Remove leading numbering like '1', '1.2', '1.2.3', optional dots/brackets/dashes.
-
-    Examples:
-    - "3.7 Настройка" -> "Настройка"
-    - "3.4.3 — Функции" -> "Функции"
-    - "1) Введение" -> "Введение"
-    - "(2.1) - Описание" -> "Описание"
-    """
-    pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+(?=[.\s]))\.?\)?\s*(?:[-–—]\s*)?"
-    return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
 
 def _escape_list_item_text(text: str) -> str:
     """Escape leading blockquote markers inside list items."""
@@ -118,7 +107,7 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
     type = block.type
     if type == "heading":
         adjusted_level = max(1, block.level - 1)
-        clean_text = _clean_heading_text(block.text)
+        clean_text = clean_heading_text(block.text)
         return f"{'#' * adjusted_level} {clean_text}"
     if type == "list":
         return _render_list_block(block, asset_map, 0, document_name)

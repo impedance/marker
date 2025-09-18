@@ -9,7 +9,11 @@ from typing import List, Optional, Tuple
 from ..adapters.document_parser import parse_document
 from ..render.markdown_renderer import render_markdown
 from ..render.assets_exporter import AssetsExporter, _transliterate
-from ..utils.text_processing import extract_heading_number_and_title, extract_letter_index
+from ..utils.text_processing import (
+    clean_heading_text,
+    extract_heading_number_and_title,
+    extract_letter_index,
+)
 from .writer import Writer
 
 _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
@@ -114,17 +118,19 @@ def _collect_sections(blocks: list) -> List[_Section]:
             nums, ttl, is_letter = _split_number_and_title(text)
             normalized_lvl = lvl - min_level + 1
 
+            cleaned_title = clean_heading_text(ttl or text)
+
             if normalized_lvl == 1:
                 flush_h2()
                 if nums:
                     number = [nums[0]]
                     if not is_letter:
                         has_numeric_h1 = True
-                    title = ttl
+                    title = cleaned_title
                 else:
                     h1_counter += 1
                     number = [h1_counter]
-                    title = text
+                    title = cleaned_title
                     has_numeric_h1 = True
                 cur_h1 = _Section(normalized_lvl, number, title, [blk], is_letter=is_letter)
                 sections.append(cur_h1)
@@ -132,9 +138,21 @@ def _collect_sections(blocks: list) -> List[_Section]:
             if normalized_lvl == 2 and nums:
                 flush_h2()
                 if len(nums) >= 2:
-                    cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk], is_letter=is_letter)
+                    cur_h2_intro = _Section(
+                        normalized_lvl,
+                        [nums[0], nums[1]],
+                        cleaned_title,
+                        [blk],
+                        is_letter=is_letter,
+                    )
                 else:
-                    cur_h2_intro = _Section(normalized_lvl, nums + [0], ttl, [blk], is_letter=is_letter)
+                    cur_h2_intro = _Section(
+                        normalized_lvl,
+                        nums + [0],
+                        cleaned_title,
+                        [blk],
+                        is_letter=is_letter,
+                    )
                 continue
             if normalized_lvl >= 3 and nums:
                 target = cur_h2_intro or cur_h1
