@@ -155,51 +155,127 @@ def _extract_numbering_from_runs(p: ET.Element) -> str:
     
     return ""
 
+def _normalize_section_key(raw: str) -> str:
+    """Normalize section identifiers used for cross-reference lookups."""
+
+    if not raw:
+        return ""
+
+    text = raw.strip()
+    if not text:
+        return ""
+
+    text = re.sub(r"\s*\.\s*", ".", text)
+    text = re.sub(r"\s{2,}", " ", text)
+
+    letter_match = re.match(r"^([А-ЯЁA-Z])(?=\.|$)", text, flags=re.IGNORECASE)
+    if letter_match:
+        letter = letter_match.group(1).upper()
+        text = letter + text[len(letter_match.group(1)) :]
+
+    appendix_match = re.match(
+        r"^(Приложение|Appendix)\s+([А-ЯЁA-Z])(.+)?$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if appendix_match:
+        prefix = appendix_match.group(1).capitalize()
+        letter = appendix_match.group(2).upper()
+        remainder = appendix_match.group(3) or ""
+        remainder = remainder.lstrip(". ")
+        if remainder:
+            text = f"{prefix} {letter}.{remainder}"
+        else:
+            text = f"{prefix} {letter}"
+
+    return text
+
+
+def _section_reference_keys(number: str) -> list[str]:
+    """Generate normalized lookup keys for a section number string."""
+
+    base = _normalize_section_key(number)
+    if not base:
+        return []
+
+    keys = [base]
+    appendix_alt = re.sub(
+        r"^(Приложение|Appendix)\s+",
+        "",
+        base,
+        flags=re.IGNORECASE,
+    ).strip()
+    if appendix_alt and appendix_alt != base:
+        keys.append(appendix_alt)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            unique.append(key)
+
+    return unique
+
+
 def _extract_section_mapping(docx_root: ET.Element) -> Dict[str, str]:
     """Extract mapping from section numbers to section titles."""
-    section_map = {}
-    
+    section_map: Dict[str, str] = {}
+
     for para in docx_root.findall('.//w:p', NS):
-        # Check if this is a heading paragraph
         pPr = para.find('w:pPr', NS)
-        if pPr is not None:
-            pStyle = pPr.find('w:pStyle', NS)
-            outlineLvl = pPr.find('w:outlineLvl', NS)
-            
-            # Get all text from paragraph
-            text_content = ''
-            for t in para.findall('.//w:t', NS):
-                if t.text:
-                    text_content += t.text
-            
-            is_heading = False
-            
-            if pStyle is not None:
-                style_val = pStyle.get(f"{{{NS['w']}}}val", '')
-                if 'heading' in style_val.lower() or style_val.lower().startswith('toc'):
-                    is_heading = True
-            
-            if outlineLvl is not None:
+        if pPr is None:
+            continue
+
+        pStyle = pPr.find('w:pStyle', NS)
+        outlineLvl = pPr.find('w:outlineLvl', NS)
+
+        text_content = ''
+        for t in para.findall('.//w:t', NS):
+            if t.text:
+                text_content += t.text
+
+        text_content = text_content.strip()
+        if not text_content:
+            continue
+
+        is_heading = False
+
+        if pStyle is not None:
+            style_val = pStyle.get(f"{{{NS['w']}}}val", '')
+            if 'heading' in style_val.lower() or style_val.lower().startswith('toc'):
                 is_heading = True
-                
-            # Check if text looks like a numbered heading
-            if text_content and re.match(r'^\d+(\.\d+)*\s', text_content):
+
+        if outlineLvl is not None:
+            is_heading = True
+
+        if not is_heading:
+            heading_like_patterns = (
+                r'^\d+(?:\.\d+)*\s',
+                r'^[А-ЯЁA-Z]\.(?:\d+\.?)+',
+                r'^(?:Приложение|Appendix)\s+[А-ЯЁA-Z]',
+            )
+            if any(
+                re.match(pattern, text_content, flags=re.IGNORECASE)
+                for pattern in heading_like_patterns
+            ):
                 is_heading = True
-                
-            if is_heading and text_content.strip():
-                # Extract section number and title, removing page numbers
-                match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)', text_content.strip())
-                if match:
-                    section_num = match.group(1)
-                    section_title = match.group(2)
-                    
-                    # Clean up the title - remove trailing numbers (page numbers)
-                    clean_title = re.sub(r'\d+$', '', section_title).strip()
-                    
-                    # Skip very generic titles like navigation elements
-                    if len(clean_title) > 5 and not clean_title.startswith('–'):
-                        section_map[section_num] = clean_title
-    
+
+        if not is_heading:
+            continue
+
+        number_str, title = extract_heading_number_and_title(text_content)
+        if not number_str or not title:
+            continue
+
+        clean_title = clean_heading_text(title)
+        if not clean_title:
+            continue
+
+        for key in _section_reference_keys(number_str):
+            if key and key not in section_map:
+                section_map[key] = clean_title
+
     return section_map
 
 def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
@@ -210,12 +286,20 @@ def _replace_cross_references(text: str, section_map: Dict[str, str]) -> str:
 
     patterns = [
         re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
+        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*)', re.IGNORECASE),
+        re.compile(r'(?<!\w)(?P<prefix>п\.\s*)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*)', re.IGNORECASE),
         re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>\d+(?:\.\d+)*)', re.IGNORECASE),
+        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>[А-ЯЁA-Z]\s*\.\s*\d+(?:\.\d+)*)', re.IGNORECASE),
+        re.compile(r'(?<!\w)(?P<prefix>пункт[а-яё]*\s+)(?P<number>(?:Приложение|Appendix)\s+[А-ЯЁA-Z](?:\.\d+)*)', re.IGNORECASE),
     ]
 
     def _replace(match: re.Match[str]) -> str:
-        number = match.group('number')
-        title = section_map.get(number)
+        raw_number = match.group('number')
+        title: str | None = None
+        for key in _section_reference_keys(raw_number):
+            title = section_map.get(key)
+            if title:
+                break
         if not title:
             return match.group(0)
 

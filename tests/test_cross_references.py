@@ -31,3 +31,29 @@ def test_cross_references_replaced_with_section_titles() -> None:
 
     assert "п.21.1" not in gzip_reference
     assert "п. Утилита Gzip" in gzip_reference
+
+
+def test_letter_appendix_references_are_replaced() -> None:
+    doc, _ = parse_document("docs-work/rukovod_adminis_32eks-_monit-2.3.0.docx")
+    paragraphs = [
+        _paragraph_text(block)
+        for block in doc.blocks
+        if isinstance(block, Paragraph)
+    ]
+
+    appendix_g_reference = next(
+        text
+        for text in paragraphs
+        if "Пассивные и активные проверки Агентов" in text and "п." in text
+    )
+    appendix_d_reference = next(
+        text
+        for text in paragraphs
+        if "Траппер-элементы данных" in text and "п." in text
+    )
+
+    assert "п.Г.3" not in appendix_g_reference
+    assert "п. Пассивные и активные проверки Агентов" in appendix_g_reference
+
+    assert "п.Д.12" not in appendix_d_reference
+    assert "п. Траппер-элементы данных" in appendix_d_reference

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from core.adapters.document_parser import parse_document
 from core.model.internal_doc import InternalDoc, Heading, Paragraph, Text
 
 # Import functions to be tested
@@ -103,7 +104,30 @@ def test_cli_build_invokes_export(monkeypatch, tmp_path):
     # Mock both functions since the build command can use either
     monkeypatch.setattr("doc2chapmd.export_docx_hierarchy", fake_export_centralized)
     monkeypatch.setattr("doc2chapmd.export_docx_hierarchy_centralized", fake_export_centralized)
-    
+
     result = runner.invoke(app, ["build", "file.docx", "--out", str(tmp_path)])
     assert result.exit_code == 0
     assert called["args"] == (Path("file.docx"), tmp_path)
+
+
+def test_appendix_sections_do_not_absorb_previous_content() -> None:
+    doc, _ = parse_document("docs-work/rukovod_adminis_32eks-_monit-2.3.0.docx")
+    sections = _collect_sections(doc.blocks)
+
+    h1_sections = {sec.title: sec for sec in sections if sec.level == 1}
+    assert "Конфигурация демонов" in h1_sections
+    assert "Протоколы" in h1_sections
+
+    def _paragraph_texts(section):
+        return [
+            "".join(getattr(inline, "content", "") for inline in block.inlines)
+            for block in section.blocks
+            if isinstance(block, Paragraph)
+        ]
+
+    config_paragraphs = _paragraph_texts(h1_sections["Конфигурация демонов"])
+    protocols_paragraphs = _paragraph_texts(h1_sections["Протоколы"])
+
+    anchor = 'Обмен данными "Сервер ↔ Прокси"'
+    assert any(anchor in text for text in config_paragraphs)
+    assert not any(anchor in text for text in protocols_paragraphs)
