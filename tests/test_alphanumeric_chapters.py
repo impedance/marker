@@ -4,7 +4,13 @@ import pytest
 
 from core.model.internal_doc import Heading, InternalDoc, Paragraph
 from core.output.file_naming import chapter_index_from_h1, generate_chapter_filename
-from core.output.hierarchical_writer import LETTER_NUMBER_BASE, export_docx_hierarchy
+from core.output.hierarchical_writer import (
+    LETTER_NUMBER_BASE, 
+    export_docx_hierarchy,
+    _analyze_document_numbering_scheme,
+    _split_number_and_title,
+    _collect_sections
+)
 from core.render.markdown_renderer import render_markdown
 from core.utils.text_processing import (
     clean_heading_text,
@@ -375,3 +381,110 @@ class TestMarkdownRendering:
         assert lines[0] == "# Протоколы"
         assert lines[1] == ""
         assert lines[2] == "# Триггерные события"
+
+
+class TestAutomaticSchemeDetection:
+    """Tests for automatic numbering scheme detection."""
+
+    def test_detect_pure_numeric_scheme(self):
+        """Should detect numeric scheme for documents with only numeric headings."""
+        blocks = [
+            Heading(level=1, text="1. Introduction"),
+            Heading(level=2, text="1.1 Overview"),
+            Heading(level=1, text="2. Implementation"),
+            Heading(level=2, text="2.1 Configuration"),
+        ]
+        
+        scheme = _analyze_document_numbering_scheme(blocks)
+        assert scheme == "numeric"
+
+    def test_detect_pure_alphanumeric_scheme(self):
+        """Should detect alphanumeric scheme for documents with only letter-based headings."""
+        blocks = [
+            Heading(level=1, text="Приложение А. Конфигурация"),
+            Heading(level=2, text="А.1 Настройка"),
+            Heading(level=1, text="Б.1 Протоколы"),
+            Heading(level=2, text="Б.2 События"),
+        ]
+        
+        scheme = _analyze_document_numbering_scheme(blocks)
+        assert scheme == "alphanumeric"
+
+    def test_detect_mixed_scheme(self):
+        """Should detect mixed scheme for documents with both numeric and letter-based headings."""
+        blocks = [
+            Heading(level=1, text="1. Introduction"),
+            Heading(level=2, text="1.1 Overview"),
+            Heading(level=1, text="Приложение А. Конфигурация"),
+            Heading(level=2, text="А.1 Настройка"),
+        ]
+        
+        scheme = _analyze_document_numbering_scheme(blocks)
+        assert scheme == "mixed"
+
+    def test_detect_scheme_no_numbered_headings(self):
+        """Should default to numeric scheme when no numbered headings found."""
+        blocks = [
+            Heading(level=1, text="Introduction"),
+            Heading(level=2, text="Overview"),
+            Heading(level=1, text="Implementation"),
+        ]
+        
+        scheme = _analyze_document_numbering_scheme(blocks)
+        assert scheme == "numeric"
+
+    def test_split_respects_numeric_scheme(self):
+        """_split_number_and_title should not process letters in pure numeric scheme."""
+        # Test that letter-like patterns are ignored in numeric scheme
+        nums, title, is_letter = _split_number_and_title("А.1 Configuration", "numeric")
+        
+        # Should not detect as letter-based in numeric scheme
+        assert not is_letter
+        assert nums == []  # No valid numeric pattern detected
+        assert title == "А.1 Configuration"
+
+    def test_split_respects_alphanumeric_scheme(self):
+        """_split_number_and_title should process letters in alphanumeric scheme."""
+        nums, title, is_letter = _split_number_and_title("А.1 Configuration", "alphanumeric")
+        
+        # Should detect as letter-based in alphanumeric scheme
+        assert is_letter
+        assert nums == [LETTER_NUMBER_BASE + 1, 1]  # А=1, so 61,1
+        assert title == "Configuration"
+
+    def test_split_mixed_scheme_flexibility(self):
+        """_split_number_and_title should handle both patterns in mixed scheme."""
+        # Test numeric pattern
+        nums1, title1, is_letter1 = _split_number_and_title("1.2 Introduction", "mixed")
+        assert not is_letter1
+        assert nums1 == [1, 2]
+        assert title1 == "Introduction"
+        
+        # Test letter pattern  
+        nums2, title2, is_letter2 = _split_number_and_title("Б.1 Протоколы", "mixed")
+        assert is_letter2
+        assert nums2 == [LETTER_NUMBER_BASE + 2, 1]  # Б=2, so 62,1
+        assert title2 == "Протоколы"
+
+    def test_collect_sections_uses_scheme_detection(self):
+        """_collect_sections should automatically detect and use appropriate scheme."""
+        # Create alphanumeric document
+        blocks = [
+            Heading(level=1, text="Приложение А. Конфигурация"),
+            Heading(level=2, text="А.1 Настройка"),
+            Heading(level=1, text="Б.1 Протоколы"),
+        ]
+        
+        sections = _collect_sections(blocks)
+        
+        # Should have properly processed letter-based numbering
+        assert len(sections) == 3
+        assert sections[0].is_letter
+        assert sections[0].number == [1]  # Normalized from LETTER_NUMBER_BASE + 1
+        assert sections[0].title == "Конфигурация"
+        
+        assert sections[1].is_letter
+        assert sections[1].number == [1, 1]  # А.1 becomes [1,1] after normalization
+        
+        assert sections[2].is_letter  
+        assert sections[2].number == [2, 1]  # Б.1 becomes [2,1] after normalization
