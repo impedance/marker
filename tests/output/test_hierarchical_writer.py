@@ -7,6 +7,7 @@ from core.model.internal_doc import InternalDoc, Heading, Paragraph, Text
 
 # Import functions to be tested
 from core.output.hierarchical_writer import (
+    LETTER_NUMBER_BASE,
     _split_number_and_title,
     _code_for_levels,
     _collect_sections,
@@ -16,10 +17,11 @@ from doc2chapmd import app
 
 
 def test_split_number_and_title_variants():
-    assert _split_number_and_title("1.2.3 Heading") == ([1, 2, 3], "Heading")
-    assert _split_number_and_title("1.2.3. Heading") == ([1, 2, 3], "Heading")
-    assert _split_number_and_title("1.2.3 - Heading") == ([1, 2, 3], "Heading")
-    assert _split_number_and_title("Heading") == ([], "Heading")
+    assert _split_number_and_title("1.2.3 Heading") == ([1, 2, 3], "Heading", False)
+    assert _split_number_and_title("1.2.3. Heading") == ([1, 2, 3], "Heading", False)
+    assert _split_number_and_title("1.2.3 - Heading") == ([1, 2, 3], "Heading", False)
+    assert _split_number_and_title("Heading") == ([], "Heading", False)
+    assert _split_number_and_title("Приложение Б. Тест") == ([LETTER_NUMBER_BASE + 2], "Тест", True)
 
 
 def test_code_for_levels():

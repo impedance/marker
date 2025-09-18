@@ -70,6 +70,7 @@ class ListBlock(BaseModel):
     type: Literal["list"] = "list"
     ordered: bool = False
     items: List[ListItem] = Field(default_factory=list)
+    list_style: str | None = None
 
 class TableCell(BaseModel):
     """A cell in a table."""

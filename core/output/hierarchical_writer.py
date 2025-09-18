@@ -16,11 +16,18 @@ _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
 _HEADING_RE_DOT = re.compile(r"^(\d+(?:\.\d+)*)\.\s+(.+)$")
 _HEADING_RE_DASH = re.compile(r"^(\d+(?:\.\d+)*)\s*[-–—]\s*(.+)$")
 
+LETTER_NUMBER_BASE = 60
 
-def _split_number_and_title(text: str) -> Tuple[List[int], str]:
-    """Splits heading text into numbering and title."""
+
+def _split_number_and_title(text: str) -> Tuple[List[int], str, bool]:
+    """Splits heading text into numbering and title.
+
+    Returns:
+        Tuple[List[int], str, bool]: Parsed number components, title, and
+        flag indicating letter-based numbering.
+    """
     s = text.strip()
-    
+
     # Try new structured extraction first
     number_str, title = extract_heading_number_and_title(s)
     if number_str:
@@ -31,23 +38,23 @@ def _split_number_and_title(text: str) -> Tuple[List[int], str]:
             # Extract sub-numbers if any (e.g., "Б.1.2" -> [2, 1, 2])
             sub_parts = re.findall(r'\d+', number_str)
             if sub_parts:
-                nums = [letter_index] + [int(x) for x in sub_parts]
+                nums = [LETTER_NUMBER_BASE + letter_index] + [int(x) for x in sub_parts]
             else:
-                nums = [letter_index]
-            return nums, title
-            
+                nums = [LETTER_NUMBER_BASE + letter_index]
+            return nums, title, True
+
         # Handle numeric numbering
         if re.match(r'^\d+', number_str):
             nums = [int(x) for x in number_str.split(".")]
-            return nums, title
-    
+            return nums, title, False
+
     # Legacy fallback for old format
     for rx in (_HEADING_RE_DOT, _HEADING_RE_DASH, _HEADING_RE):
         m = rx.match(s)
         if m:
             nums = [int(x) for x in m.group(1).split(".")]
-            return nums, m.group(2).strip()
-    return [], s
+            return nums, m.group(2).strip(), False
+    return [], s, False
 
 
 def _clean_filename(title: str) -> str:
@@ -72,6 +79,7 @@ class _Section:
     number: List[int]
     title: str
     blocks: list
+    is_letter: bool = False
 
 
 def _find_min_heading_level(blocks: list) -> int:
@@ -89,6 +97,7 @@ def _collect_sections(blocks: list) -> List[_Section]:
     cur_h1: Optional[_Section] = None
     cur_h2_intro: Optional[_Section] = None
     h1_counter = 0
+    has_numeric_h1 = False
 
     min_level = _find_min_heading_level(blocks)
 
@@ -102,27 +111,30 @@ def _collect_sections(blocks: list) -> List[_Section]:
         if getattr(blk, "type", None) == "heading":
             text = blk.text or ""
             lvl = blk.level
-            nums, ttl = _split_number_and_title(text)
+            nums, ttl, is_letter = _split_number_and_title(text)
             normalized_lvl = lvl - min_level + 1
 
             if normalized_lvl == 1:
                 flush_h2()
                 if nums:
                     number = [nums[0]]
+                    if not is_letter:
+                        has_numeric_h1 = True
                     title = ttl
                 else:
                     h1_counter += 1
                     number = [h1_counter]
                     title = text
-                cur_h1 = _Section(normalized_lvl, number, title, [blk])
+                    has_numeric_h1 = True
+                cur_h1 = _Section(normalized_lvl, number, title, [blk], is_letter=is_letter)
                 sections.append(cur_h1)
                 continue
             if normalized_lvl == 2 and nums:
                 flush_h2()
                 if len(nums) >= 2:
-                    cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk])
+                    cur_h2_intro = _Section(normalized_lvl, [nums[0], nums[1]], ttl, [blk], is_letter=is_letter)
                 else:
-                    cur_h2_intro = _Section(normalized_lvl, nums + [0], ttl, [blk])
+                    cur_h2_intro = _Section(normalized_lvl, nums + [0], ttl, [blk], is_letter=is_letter)
                 continue
             if normalized_lvl >= 3 and nums:
                 target = cur_h2_intro or cur_h1
@@ -138,7 +150,32 @@ def _collect_sections(blocks: list) -> List[_Section]:
             target.blocks.append(blk)
 
     flush_h2()
+    if not has_numeric_h1:
+        _normalize_letter_sections(sections)
     return sections
+
+
+def _normalize_letter_sections(sections: List[_Section]) -> None:
+    """Adjust numbering for letter-based sections when only letters are present."""
+    letter_first_numbers = {
+        sec.number[0]
+        for sec in sections
+        if sec.number and sec.is_letter
+    }
+    if not letter_first_numbers:
+        return
+
+    mapping = {
+        first: first - LETTER_NUMBER_BASE
+        for first in letter_first_numbers
+        if first > LETTER_NUMBER_BASE
+    }
+    if not mapping:
+        return
+
+    for sec in sections:
+        if sec.number and sec.number[0] in mapping:
+            sec.number[0] = mapping[sec.number[0]]
 
 
 def _copy_section_images(blocks: list, asset_map: dict, temp_dir: Path, target_dir: Path, writer) -> dict:

@@ -24,7 +24,10 @@ def chapter_index_from_h1(heading_line: str) -> int:
         letter_index = extract_letter_index(number)
         if letter_index > 0:
             return letter_index
-            
+
+        if not title.strip():
+            return 1
+
         # Fall back to numeric extraction
         first = re.split(r'[.\-]', number)[0]
         try:

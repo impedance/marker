@@ -24,7 +24,7 @@ def clean_heading_text(text: str) -> str:
     """
     # Try structured extraction first (more reliable)
     number, title = extract_heading_number_and_title(text)
-    if title:
+    if number and title:
         return title
     
     # Fallback to regex patterns for edge cases

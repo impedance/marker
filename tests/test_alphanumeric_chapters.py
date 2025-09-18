@@ -1,16 +1,14 @@
-"""
-Tests for alphanumeric chapter numbering support (like Б.1, Приложение Б).
+"""Tests for alphanumeric chapter numbering support."""
 
-This module tests the functionality to handle documents with mixed numbering schemes
-including alphabetic prefixes like "Б.1", "Приложение Б" etc.
-"""
 import pytest
 
+from core.model.internal_doc import Heading, InternalDoc, Paragraph
 from core.output.file_naming import chapter_index_from_h1, generate_chapter_filename
+from core.output.hierarchical_writer import LETTER_NUMBER_BASE, export_docx_hierarchy
 from core.utils.text_processing import (
-    extract_heading_number_and_title, 
-    extract_letter_index, 
-    clean_heading_text
+    clean_heading_text,
+    extract_heading_number_and_title,
+    extract_letter_index,
 )
 
 
@@ -252,7 +250,104 @@ class TestBackwardCompatibility:
         # All should have clean titles
         titles = [clean_heading_text(p) for p in patterns]
         expected_titles = [
-            "Введение", "Архитектура", "Реализация",
-            "Конфигурация", "Протоколы", "Активный прокси"
+            "Введение",
+            "Архитектура",
+            "Реализация",
+            "Конфигурация",
+            "Протоколы",
+            "Активный прокси",
         ]
         assert titles == expected_titles
+
+
+class TestHierarchicalWriterAlphanumeric:
+    """Integration tests for hierarchical writer with letter numbering."""
+
+    def test_letter_sections_offset_when_numeric_present(self, tmp_path, monkeypatch):
+        """Ensure letter-numbered sections do not collide with numeric ones."""
+
+        mock_doc = InternalDoc(
+            blocks=[
+                Heading(level=1, text="1 Общие сведения"),
+                Paragraph(),
+                Heading(level=2, text="1.1 Подраздел"),
+                Paragraph(),
+                Heading(level=1, text="Приложение А. Конфигурация"),
+                Paragraph(),
+                Heading(level=2, text="А.1 Настройки"),
+                Paragraph(),
+                Heading(level=1, text="Приложение Б. Процессы"),
+            ]
+        )
+
+        def mock_parse_document(path):
+            return mock_doc, []
+
+        monkeypatch.setattr(
+            "core.output.hierarchical_writer.parse_document",
+            mock_parse_document,
+        )
+
+        docx_path = tmp_path / "mixed.docx"
+        docx_path.write_text("")
+        output_dir = tmp_path / "out"
+
+        export_docx_hierarchy(docx_path, output_dir)
+
+        doc_root = output_dir / "mixed"
+        assert doc_root.exists()
+
+        top_dirs = {item.name for item in doc_root.iterdir() if item.is_dir()}
+        numeric_prefix = "010000"
+        letter_a_prefix = f"{LETTER_NUMBER_BASE + 1:02d}0000"
+        letter_b_prefix = f"{LETTER_NUMBER_BASE + 2:02d}0000"
+
+        assert any(name.startswith(numeric_prefix) for name in top_dirs)
+        assert any(name.startswith(letter_a_prefix) for name in top_dirs)
+        assert any(name.startswith(letter_b_prefix) for name in top_dirs)
+
+        appendix_a_dir = next(
+            doc_root / name for name in top_dirs if name.startswith(letter_a_prefix)
+        )
+        appendix_files = {p.name for p in appendix_a_dir.iterdir()}
+        assert any(fname.startswith(f"{LETTER_NUMBER_BASE + 1:02d}01") for fname in appendix_files)
+
+    def test_letter_only_documents_keep_compact_numbering(self, tmp_path, monkeypatch):
+        """Letter-only documents should retain compact numbering."""
+
+        mock_doc = InternalDoc(
+            blocks=[
+                Heading(level=1, text="Приложение А. Конфигурация"),
+                Paragraph(),
+                Heading(level=2, text="А.1 Настройки"),
+                Paragraph(),
+                Heading(level=1, text="Приложение Б. Процессы"),
+                Paragraph(),
+                Heading(level=2, text="Б.1 Подраздел"),
+            ]
+        )
+
+        def mock_parse_document(path):
+            return mock_doc, []
+
+        monkeypatch.setattr(
+            "core.output.hierarchical_writer.parse_document",
+            mock_parse_document,
+        )
+
+        docx_path = tmp_path / "appendices.docx"
+        docx_path.write_text("")
+        output_dir = tmp_path / "out_letter"
+
+        export_docx_hierarchy(docx_path, output_dir)
+
+        doc_root = output_dir / "appendices"
+        assert doc_root.exists()
+
+        top_dirs = sorted(item.name for item in doc_root.iterdir() if item.is_dir())
+        assert top_dirs[0].startswith("010000")
+        assert top_dirs[1].startswith("020000")
+
+        appendix_a_dir = doc_root / top_dirs[0]
+        appendix_a_files = {p.name for p in appendix_a_dir.iterdir()}
+        assert any(name.startswith("0101") for name in appendix_a_files)

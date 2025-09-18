@@ -79,8 +79,15 @@ def _render_list_block(
 ) -> str:
     """Render a list block with proper indentation and nested items."""
     lines: List[str] = []
+    list_style = getattr(list_block, "list_style", "")
+    normalized_style = list_style.lower() if isinstance(list_style, str) else ""
+    is_letter_list = normalized_style in {"lowerletter", "upperletter"}
+
+    if is_letter_list and level == 0:
+        lines.append("::letter-list")
+
     for index, item in enumerate(list_block.items, start=1):
-        marker = f"{index}. " if list_block.ordered else "- "
+        marker = "- " if is_letter_list else (f"{index}. " if list_block.ordered else "- ")
         prefix = "  " * level
         item_blocks = list(item.blocks)
         first_line = ""
@@ -102,6 +109,8 @@ def _render_list_block(
                     lines.append(f"{prefix}  {child_line}")
                 else:
                     lines.append("")
+    if is_letter_list and level == 0:
+        lines.append("::")
     return "\n".join(lines)
 
 def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
