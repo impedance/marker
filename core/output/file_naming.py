@@ -1,19 +1,38 @@
 import re
 from slugify import slugify
+from ..utils.text_processing import extract_heading_number_and_title, extract_letter_index
 
 def chapter_index_from_h1(heading_line: str) -> int:
     """Extract chapter index from H1 heading line.
     
     Args:
-        heading_line: Heading text like "1.2 Technical Requirements" or "3 Installation"
+        heading_line: Heading text like "1.2 Technical Requirements", "3 Installation",
+                     "Б.1 Протоколы", "Приложение А. Конфигурация"
         
     Returns:
-        Integer index from the first component of the number, defaulting to 1
+        Integer index from the first component of the number, defaulting to 1.
+        For alphabetic numbering: А=1, Б=2, В=3, etc.
     """
     # Remove markdown hashes if present
     text = re.sub(r'^#+\s*', '', heading_line.strip())
     
-    # Extract number at the beginning: "3.1" or "3" or "III" etc.
+    # Try to extract structured number and title first
+    number, title = extract_heading_number_and_title(text)
+    
+    if number:
+        # Check for alphabetic patterns first
+        letter_index = extract_letter_index(number)
+        if letter_index > 0:
+            return letter_index
+            
+        # Fall back to numeric extraction
+        first = re.split(r'[.\-]', number)[0]
+        try:
+            return int(first)
+        except ValueError:
+            return 1
+    
+    # Legacy fallback for old format
     m = re.match(r'^([^\s]+)\s+.*$', text.strip())
     if not m:
         return 1
@@ -51,7 +70,13 @@ def generate_chapter_filename(index: int, title: str, pattern: str = "{index:02d
         chapter_index = extracted_index if extracted_index > 1 else index
     
     # Clean title for slug (remove the number part if present)
-    clean_title = re.sub(r'^[\dIVXLCDM]+(?:[.\-]\d+)*\s+', '', first_line_title, flags=re.IGNORECASE)
+    # Handle both numeric and alphabetic numbering patterns
+    number, extracted_title = extract_heading_number_and_title(first_line_title)
+    clean_title = extracted_title if extracted_title else first_line_title
+    
+    # Legacy fallback for old numeric patterns
+    if not extracted_title:
+        clean_title = re.sub(r'^[\dIVXLCDM]+(?:[.\-]\d+)*\s+', '', first_line_title, flags=re.IGNORECASE)
     
     # Slugify the clean title
     slug = slugify(clean_title, max_length=60, word_boundary=True)

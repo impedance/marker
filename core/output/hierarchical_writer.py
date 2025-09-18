@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 from ..adapters.document_parser import parse_document
 from ..render.markdown_renderer import render_markdown
 from ..render.assets_exporter import AssetsExporter, _transliterate
+from ..utils.text_processing import extract_heading_number_and_title, extract_letter_index
 from .writer import Writer
 
 _HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
@@ -19,6 +20,28 @@ _HEADING_RE_DASH = re.compile(r"^(\d+(?:\.\d+)*)\s*[-–—]\s*(.+)$")
 def _split_number_and_title(text: str) -> Tuple[List[int], str]:
     """Splits heading text into numbering and title."""
     s = text.strip()
+    
+    # Try new structured extraction first
+    number_str, title = extract_heading_number_and_title(s)
+    if number_str:
+        # Handle alphabetic numbering
+        letter_index = extract_letter_index(number_str)
+        if letter_index > 0:
+            # For letter-based numbering like "Б.1", "Приложение А"
+            # Extract sub-numbers if any (e.g., "Б.1.2" -> [2, 1, 2])
+            sub_parts = re.findall(r'\d+', number_str)
+            if sub_parts:
+                nums = [letter_index] + [int(x) for x in sub_parts]
+            else:
+                nums = [letter_index]
+            return nums, title
+            
+        # Handle numeric numbering
+        if re.match(r'^\d+', number_str):
+            nums = [int(x) for x in number_str.split(".")]
+            return nums, title
+    
+    # Legacy fallback for old format
     for rx in (_HEADING_RE_DOT, _HEADING_RE_DASH, _HEADING_RE):
         m = rx.match(s)
         if m:
