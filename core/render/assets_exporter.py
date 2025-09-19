@@ -4,7 +4,14 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
 from core.model.resource_ref import ResourceRef
-from core.model.internal_doc import InternalDoc, Image, Heading
+from core.model.internal_doc import (
+    InternalDoc,
+    Image,
+    Heading,
+    Table,
+    ListBlock,
+    Paragraph,
+)
 
 # A simple map to get file extensions from mime types
 MIME_TYPE_EXTENSIONS = {
@@ -275,47 +282,80 @@ class AssetsExporter:
     def _build_hierarchical_structure(self, doc: InternalDoc) -> Dict[str, Dict]:
         """
         Build hierarchical structure mapping from document blocks.
-        
+
         Returns:
             Dict mapping resource_id to {"path_parts": [section, subsection, ...]}
         """
-        hierarchy = {}
-        current_sections = []  # Stack of current section names by level
-        
+        hierarchy: Dict[str, Dict] = {}
+        current_sections: List[str] = []  # Stack of current section names by level
+
         for block in doc.blocks:
             if isinstance(block, Heading):
-                # Update the sections stack based on heading level
-                level = block.level
-                title = self._clean_heading_text(block.text)
-                
-                # Truncate sections stack to current level-1
-                current_sections = current_sections[:level-1]
-                
-                # Add current heading at its level
-                if len(current_sections) == level - 1:
-                    current_sections.append(title)
-                else:
-                    # Fill gaps if needed
-                    while len(current_sections) < level - 1:
-                        current_sections.append("Unnamed")
-                    current_sections.append(title)
-                    
-            elif isinstance(block, Image) and block.resource_id:
-                # Assign image to current section path (minimum 2 levels for hierarchy)
-                if len(current_sections) >= 2:
-                    hierarchy[block.resource_id] = {
-                        "path_parts": current_sections[:2]
-                    }
-                elif len(current_sections) == 1:
-                    hierarchy[block.resource_id] = {
-                        "path_parts": [current_sections[0]]
-                    }
-                else:
-                    hierarchy[block.resource_id] = {
-                        "path_parts": ["Без раздела"]
-                    }
-        
+                current_sections = self._update_section_stack(block, current_sections)
+            else:
+                self._collect_images_from_block(block, current_sections, hierarchy)
+
         return hierarchy
+
+    def _update_section_stack(self, heading: Heading, current_sections: List[str]) -> List[str]:
+        """Update the section stack based on heading level and text."""
+        level = max(heading.level, 1)
+        title = self._clean_heading_text(heading.text)
+
+        updated = current_sections[: level - 1]
+        while len(updated) < level - 1:
+            updated.append("Unnamed")
+        updated.append(title)
+        return updated
+
+    def _collect_images_from_block(
+        self,
+        block,
+        current_sections: List[str],
+        hierarchy: Dict[str, Dict],
+    ) -> None:
+        """Recursively collect image references from nested blocks."""
+        if isinstance(block, Image) and block.resource_id:
+            hierarchy[block.resource_id] = {
+                "path_parts": self._path_parts_for_sections(current_sections)
+            }
+            return
+
+        if isinstance(block, Table):
+            self._collect_images_from_table(block, current_sections, hierarchy)
+            return
+
+        if isinstance(block, ListBlock):
+            for item in block.items:
+                for child in item.blocks:
+                    self._collect_images_from_block(child, current_sections, hierarchy)
+            return
+
+        if isinstance(block, Paragraph):
+            return
+
+    def _collect_images_from_table(
+        self,
+        table: Table,
+        current_sections: List[str],
+        hierarchy: Dict[str, Dict],
+    ) -> None:
+        """Traverse table structure and collect images from cells."""
+        for cell in table.header.cells:
+            for cell_block in cell.blocks:
+                self._collect_images_from_block(cell_block, current_sections, hierarchy)
+        for row in table.rows:
+            for cell in row.cells:
+                for cell_block in cell.blocks:
+                    self._collect_images_from_block(cell_block, current_sections, hierarchy)
+
+    def _path_parts_for_sections(self, current_sections: List[str]) -> List[str]:
+        """Return appropriate path parts for the current section stack."""
+        if len(current_sections) >= 2:
+            return current_sections[:2]
+        if len(current_sections) == 1:
+            return [current_sections[0]]
+        return ["Без раздела"]
     
     def _clean_heading_text(self, text: str) -> str:
         """Clean heading text by removing numeric prefixes."""

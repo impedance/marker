@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from core.model.internal_doc import (
     InternalDoc,
@@ -34,7 +34,15 @@ def _render_inline_for_table(inline: Inline) -> str:
     rendered = _render_inline(inline)
     return _escape_table_content(rendered)
 
-def _render_block_for_table(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
+ParentContext = Tuple[str, ...]
+
+
+def _render_block_for_table(
+    block: Block,
+    asset_map: Dict[str, str],
+    document_name: str = "",
+    parent_stack: ParentContext = (),
+) -> str:
     """Renders a block element for table cells with proper escaping."""
     type = block.type
     if type == "paragraph":
@@ -45,15 +53,8 @@ def _render_block_for_table(block: Block, asset_map: Dict[str, str], document_na
             command = match.group(1)
             return f"```bash Terminal\n{command}\n```"
         return text
-    if type == "image":
-        # For images in table cells, use inline markdown format instead of block format
-        path = asset_map.get(block.resource_id, "about:blank")
-        sign_text = block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
-        # Use standard markdown image syntax for table cells
-        escaped_sign = _escape_table_content(sign_text)
-        return f"![{escaped_sign}](/{block.resource_id}.png)"
-    # For other block types, render normally and then escape
-    rendered = _render_block(block, asset_map, document_name)
+    # For other block types, render normally with table context and escape
+    rendered = _render_block(block, asset_map, document_name, parent_stack + ("table",))
     return _escape_table_content(rendered)
 
 def _clean_heading_text(text: str) -> str:
@@ -85,6 +86,7 @@ def _render_list_block(
     asset_map: Dict[str, str],
     level: int = 0,
     document_name: str = "",
+    parent_stack: ParentContext = (),
 ) -> str:
     """Render a list block with proper indentation and nested items."""
     lines: List[str] = []
@@ -100,11 +102,22 @@ def _render_list_block(
         lines.append(f"{prefix}{marker}{first_line}".rstrip())
         for child in item_blocks:
             if getattr(child, "type", None) == "list":
-                rendered_child = _render_list_block(child, asset_map, level + 1, document_name)
+                rendered_child = _render_list_block(
+                    child,
+                    asset_map,
+                    level + 1,
+                    document_name,
+                    parent_stack + ("list_item",),
+                )
                 if rendered_child:
                     lines.extend(rendered_child.splitlines())
                 continue
-            rendered_child = _render_block(child, asset_map, document_name)
+            rendered_child = _render_block(
+                child,
+                asset_map,
+                document_name,
+                parent_stack + ("list_item",),
+            )
             child_lines = rendered_child.splitlines() if rendered_child else [""]
             for child_line in child_lines:
                 if child_line:
@@ -113,7 +126,35 @@ def _render_list_block(
                     lines.append("")
     return "\n".join(lines)
 
-def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = "") -> str:
+INLINE_CONTEXTS = {"paragraph", "table", "list_item"}
+
+
+def _image_sign_text(block: Block) -> str:
+    """Return the descriptive text for an image."""
+    return block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
+
+
+def _render_image(block: Block, parent_stack: ParentContext) -> str:
+    """Render an image block depending on its parent context."""
+    sign_text = _image_sign_text(block)
+    if any(context in INLINE_CONTEXTS for context in parent_stack):
+        return f"[{sign_text}](/{block.resource_id}.png)"
+    return (
+        f"::sign-image\n"
+        f"---\n"
+        f"src: /{block.resource_id}.png\n"
+        f"sign: {sign_text}\n"
+        f"---\n"
+        f"::"
+    )
+
+
+def _render_block(
+    block: Block,
+    asset_map: Dict[str, str],
+    document_name: str = "",
+    parent_stack: ParentContext = (),
+) -> str:
     """Renders a single block element to its Markdown representation."""
     type = block.type
     if type == "heading":
@@ -121,7 +162,7 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
         clean_text = _clean_heading_text(block.text)
         return f"{'#' * adjusted_level} {clean_text}"
     if type == "list":
-        return _render_list_block(block, asset_map, 0, document_name)
+        return _render_list_block(block, asset_map, 0, document_name, parent_stack + ("list",))
     if type == "paragraph":
         text = "".join(_render_inline(inline) for inline in block.inlines)
         stripped = text.lstrip()
@@ -131,17 +172,7 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
             return f"```bash Terminal\n{command}\n```"
         return text
     if type == "image":
-        path = asset_map.get(block.resource_id, "about:blank")
-        # Always use ::sign-image format for all images
-        # Use caption directly from DOCX parser (now extracted from ROSA_Рисунок_Номер style)
-        sign_text = block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
-            
-        return (f"::sign-image\n"
-               f"---\n"
-               f"src: /{block.resource_id}.png\n"
-               f"sign: {sign_text}\n"
-               f"---\n"
-               f"::")
+        return _render_image(block, parent_stack)
     if type == "code":
         info = []
         if block.language:
@@ -154,7 +185,15 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
         def _row(r) -> str:
             cells = []
             for cell in r.cells:
-                cell_parts = [_render_block_for_table(b, asset_map, document_name) for b in cell.blocks]
+                cell_parts = [
+                    _render_block_for_table(
+                        b,
+                        asset_map,
+                        document_name,
+                        parent_stack,
+                    )
+                    for b in cell.blocks
+                ]
                 cells.append(" ".join(cell_parts).strip())
             return "| " + " | ".join(cells) + " |"
 
