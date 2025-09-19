@@ -94,11 +94,36 @@ def _render_list_block(
         marker = f"{index}. " if list_block.ordered else "- "
         prefix = "  " * level
         item_blocks = list(item.blocks)
-        first_line = ""
-        if item_blocks and getattr(item_blocks[0], "type", None) == "paragraph":
-            first_paragraph = item_blocks.pop(0)
-            first_line = "".join(_render_inline(inline) for inline in first_paragraph.inlines).strip()
-            first_line = _escape_list_item_text(first_line)
+        inline_segments: List[str] = []
+
+        if item_blocks and getattr(item_blocks[0], "type", None) == "image":
+            leading_image = item_blocks.pop(0)
+            rendered_image = _render_block(
+                leading_image,
+                asset_map,
+                document_name,
+                parent_stack + ("list_item",),
+            )
+            if rendered_image:
+                inline_segments.append(rendered_image)
+
+        paragraph_index = next(
+            (
+                idx
+                for idx, block in enumerate(item_blocks)
+                if getattr(block, "type", None) == "paragraph"
+            ),
+            None,
+        )
+        if paragraph_index is not None:
+            first_paragraph = item_blocks.pop(paragraph_index)
+            paragraph_text = "".join(
+                _render_inline(inline) for inline in first_paragraph.inlines
+            ).strip()
+            if paragraph_text:
+                inline_segments.append(_escape_list_item_text(paragraph_text))
+
+        first_line = " ".join(segment for segment in inline_segments if segment).strip()
         lines.append(f"{prefix}{marker}{first_line}".rstrip())
         for child in item_blocks:
             if getattr(child, "type", None) == "list":
