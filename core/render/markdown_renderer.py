@@ -61,6 +61,8 @@ def _clean_heading_text(text: str) -> str:
     pattern = r"^\s*(?:\(?\d+(?:[.\-]\d+)*\)?|[IVXLCDM]+(?=[.\s]))\.?\)?\s*(?:[-–—]\s*)?"
     return re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
 
+
+
 def _escape_list_item_text(text: str) -> str:
     """Escape leading blockquote markers inside list items."""
     stripped = text.lstrip()
@@ -124,7 +126,9 @@ def _render_block(block: Block, asset_map: Dict[str, str], document_name: str = 
     if type == "image":
         path = asset_map.get(block.resource_id, "about:blank")
         # Always use ::sign-image format for all images
+        # Use caption directly from DOCX parser (now extracted from ROSA_Рисунок_Номер style)
         sign_text = block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
+            
         return (f"::sign-image\n"
                f"---\n"
                f"src: /{block.resource_id}.png\n"

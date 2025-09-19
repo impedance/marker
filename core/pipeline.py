@@ -56,6 +56,7 @@ class DocumentPipeline:
             
             # 1. Parse with document adapter
             doc, resources = parse_document(input_path)
+            
 
             # 2. Apply transforms
             doc = normalize(doc)

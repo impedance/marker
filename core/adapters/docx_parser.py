@@ -552,35 +552,59 @@ def _find_seq_picnum_in_paragraph(p: ET.Element) -> str:
     return ""
 
 
+def _find_rosa_caption_paragraphs(all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> List[Tuple[ET.Element, str]]:
+    """Find all paragraphs with ROSA_Рисунок_Номер style and return them with their text."""
+    rosa_captions = []
+    
+    for para in all_paragraphs:
+        # Get paragraph style
+        style_id = ""
+        pPr = para.find("w:pPr", NS)
+        if pPr is not None:
+            pStyle = pPr.find("w:pStyle", NS)
+            if pStyle is not None:
+                style_id = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
+        
+        style_name = style_map.get(style_id, "").lower()
+        
+        # Check for ROSA_Рисунок_Номер style
+        if "рисунок" in style_name and "номер" in style_name:
+            text = _extract_text_from_paragraph(para).strip()
+            if text:  # Only include paragraphs with actual text
+                rosa_captions.append((para, text))
+    
+    return rosa_captions
+
+
 def _find_caption_for_image_with_paragraph(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str], image_name: str = "") -> Tuple[str, ET.Element | None]:
-    """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text. Returns (caption_text, caption_paragraph)."""
+    """Find caption text for an image paragraph by looking for ROSA_Рисунок_Номер style paragraphs. Returns (caption_text, caption_paragraph)."""
     try:
         img_index = all_paragraphs.index(image_para)
         
-        # Strategy 1: Look for complete caption with number pattern in nearby paragraphs
-        for offset in range(-2, 4):  # Search both before and after image
+        # Strategy 1: Look for ROSA_Рисунок_Номер style paragraphs near the image
+        for offset in range(-3, 4):  # Search both before and after image
             para_index = img_index + offset
             if 0 <= para_index < len(all_paragraphs):
                 para = all_paragraphs[para_index]
-                text = _extract_text_from_paragraph(para).strip()
                 
-                # Check if this paragraph contains a complete figure caption
-                figure_patterns = [
-                    r'(рисунок\s+[-–—]?\s*\d+\s*[-–—]\s*.+)',
-                    r'(рисунок\s+\d+\s*[-–—]\s*.+)',
-                    r'(рис\.\s*\d+\s*[-–—]\s*.+)',
-                    r'(figure\s+\d+\s*[-–—]\s*.+)',
-                    r'(fig\.\s*\d+\s*[-–—]\s*.+)'
-                ]
+                # Get paragraph style
+                style_id = ""
+                pPr = para.find("w:pPr", NS)
+                if pPr is not None:
+                    pStyle = pPr.find("w:pStyle", NS)
+                    if pStyle is not None:
+                        style_id = pStyle.attrib.get(f"{{{NS['w']}}}val", "")
                 
-                for pattern in figure_patterns:
-                    match = re.search(pattern, text, re.IGNORECASE)
-                    if match:
-                        return match.group(1).strip(), para
+                style_name = style_map.get(style_id, "").lower()
+                
+                # Check for ROSA_Рисунок_Номер style
+                if "рисунок" in style_name and "номер" in style_name:
+                    text = _extract_text_from_paragraph(para).strip()
+                    if text:
+                        return text, para
         
-        # Return original function result for fallback, without paragraph tracking
-        caption = _find_caption_for_image_original(image_para, all_paragraphs, style_map, image_name)
-        return caption, None
+        # Fallback: Return empty caption if no ROSA_Рисунок_Номер style found
+        return "", None
         
     except ValueError:
         # image_para not found in all_paragraphs
@@ -630,122 +654,6 @@ def _should_reorder_command_before_image(current_para: ET.Element, next_para: ET
                     
     return False
 
-def _find_caption_for_image_original(image_para: ET.Element, all_paragraphs: List[ET.Element], style_map: Dict[str, str], image_name: str = "") -> str:
-    """Find caption text for an image paragraph by looking for SEQ picnum fields and caption text."""
-    try:
-        img_index = all_paragraphs.index(image_para)
-        
-        # Strategy 1: Look for complete caption with number pattern in nearby paragraphs
-        for offset in range(-2, 4):  # Search both before and after image
-            para_index = img_index + offset
-            if 0 <= para_index < len(all_paragraphs):
-                para = all_paragraphs[para_index]
-                text = _extract_text_from_paragraph(para).strip()
-                
-                # Check if this paragraph contains a complete figure caption
-                figure_patterns = [
-                    r'(рисунок\s+[-–—]?\s*\d+\s*[-–—]\s*.+)',
-                    r'(рисунок\s+\d+\s*[-–—]\s*.+)',
-                    r'(рис\.\s*\d+\s*[-–—]\s*.+)',
-                    r'(figure\s+\d+\s*[-–—]\s*.+)',
-                    r'(fig\.\s*\d+\s*[-–—]\s*.+)'
-                ]
-                
-                for pattern in figure_patterns:
-                    match = re.search(pattern, text, re.IGNORECASE)
-                    if match:
-                        return match.group(1).strip()
-        
-        # Strategy 2: Look for separate number and caption parts (legacy approach)
-        # First, look for SEQ picnum field in previous paragraphs (up to 3 paragraphs back)
-        figure_number = ""
-        for offset in range(1, 4):
-            prev_index = img_index - offset
-            if prev_index >= 0:
-                prev_para = all_paragraphs[prev_index]
-                seq_num = _find_seq_picnum_in_paragraph(prev_para)
-                if seq_num:
-                    figure_number = seq_num
-                    break
-        
-        # Then, look for caption text in following paragraphs
-        caption_text = ""
-        for offset in range(1, 4):
-            next_index = img_index + offset
-            if next_index < len(all_paragraphs):
-                next_para = all_paragraphs[next_index]
-                
-                if _is_caption_paragraph(next_para, style_map):
-                    caption_text = _extract_text_from_paragraph(next_para).strip()
-                    if caption_text:
-                        break
-                        
-                # If we encounter another image, stop looking
-                if next_para.findall('.//w:drawing', NS):
-                    break
-                    
-                # If paragraph has significant content but isn't a caption, stop
-                text = _extract_text_from_paragraph(next_para).strip()
-                if len(text) > 50 and not _is_caption_paragraph(next_para, style_map):
-                    break
-        
-        # Strategy 3: Try to extract figure number from image name attribute
-        if not figure_number and image_name:
-            # Look for number in image name like "Рисунок 1", "Picture 1", etc.
-            name_patterns = [
-                r'рисунок\s+(\d+)',
-                r'рис\.\s*(\d+)', 
-                r'figure\s+(\d+)',
-                r'picture\s+(\d+)',
-                r'fig\.\s*(\d+)'
-            ]
-            
-            for pattern in name_patterns:
-                match = re.search(pattern, image_name, re.IGNORECASE)
-                if match:
-                    figure_number = match.group(1)
-                    break
-        
-        # Strategy 4: Try to extract figure number from text patterns in nearby paragraphs
-        if not figure_number:
-            for offset in range(-2, 4):
-                para_index = img_index + offset
-                if 0 <= para_index < len(all_paragraphs):
-                    para = all_paragraphs[para_index]
-                    text = _extract_text_from_paragraph(para).strip()
-                    
-                    # Look for figure number patterns
-                    number_patterns = [
-                        r'рисунок\s+[-–—]?\s*(\d+)',
-                        r'рисунок\s+(\d+)',
-                        r'рис\.\s*(\d+)',
-                        r'figure\s+(\d+)',
-                        r'fig\.\s*(\d+)'
-                    ]
-                    
-                    for pattern in number_patterns:
-                        match = re.search(pattern, text, re.IGNORECASE)
-                        if match:
-                            figure_number = match.group(1)
-                            break
-                    if figure_number:
-                        break
-        
-        # Combine figure number and caption text
-        if figure_number and caption_text:
-            return f"Рисунок {figure_number} – {caption_text}"
-        elif caption_text:
-            # Check if caption already contains figure number
-            if re.search(r'(рисунок|figure|рис\.|fig\.)\s+\d+', caption_text, re.IGNORECASE):
-                return caption_text
-            # Fallback to just caption text if no SEQ field found
-            return caption_text
-    
-    except ValueError:
-        # image_para not found in all_paragraphs
-        pass
-    
-    return ""
 
 def _parse_table(tbl: ET.Element, relationships: Dict[str, str], media_images: Dict[str, ResourceRef], 
                 all_paragraphs: List[ET.Element], style_map: Dict[str, str]) -> Table:
@@ -840,6 +748,8 @@ def split_docx_by_h1(
         written.append(path)
 
     return sections, written
+
+
 
 def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[ResourceRef]]:
     """
