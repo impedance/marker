@@ -1001,7 +1001,7 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
 
     def is_note_paragraph(text: str) -> bool:
         """Check if paragraph text starts with note pattern."""
-        return bool(re.match(r'^\s*Примечание\s*–', text.strip()))
+        return bool(re.match(r'^\s*Примечани[ея]\s*[-–—]', text.strip()))
     
     
     def is_table_caption(text: str) -> bool:
