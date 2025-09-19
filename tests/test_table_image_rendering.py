@@ -147,3 +147,25 @@ class TestTableImageRendering:
 
         assert "[Изображение в списке](/list_image.png)" in result
         assert "::sign-image" not in result
+
+    def test_list_item_with_leading_image_inlines_description(self):
+        """Images that start a list item should be rendered on the same line as the text."""
+        image_block = Image(
+            type="image",
+            resource_id="image47",
+            alt="Рисунок 52",
+            caption="Рисунок 52",
+        )
+
+        description_block = Paragraph(
+            inlines=[Text(content="– отображение страницы в режиме киоска")]
+        )
+
+        list_item = ListItem(blocks=[image_block, description_block])
+        list_block = ListBlock(items=[list_item])
+        doc = InternalDoc(blocks=[list_block])
+
+        result = render_markdown(doc, {})
+
+        expected = "- [Рисунок 52](/image47.png) – отображение страницы в режиме киоска"
+        assert result == expected

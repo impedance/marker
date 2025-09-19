@@ -94,11 +94,30 @@ def _render_list_block(
         marker = f"{index}. " if list_block.ordered else "- "
         prefix = "  " * level
         item_blocks = list(item.blocks)
-        first_line = ""
-        if item_blocks and getattr(item_blocks[0], "type", None) == "paragraph":
-            first_paragraph = item_blocks.pop(0)
-            first_line = "".join(_render_inline(inline) for inline in first_paragraph.inlines).strip()
-            first_line = _escape_list_item_text(first_line)
+        inline_segments: List[str] = []
+        while item_blocks:
+            leading_block = item_blocks[0]
+            block_type = getattr(leading_block, "type", None)
+            if block_type == "paragraph":
+                first_paragraph = item_blocks.pop(0)
+                paragraph_text = "".join(
+                    _render_inline(inline) for inline in first_paragraph.inlines
+                ).strip()
+                inline_segments.append(_escape_list_item_text(paragraph_text))
+                break
+            if block_type == "image":
+                image_block = item_blocks.pop(0)
+                rendered_image = _render_block(
+                    image_block,
+                    asset_map,
+                    document_name,
+                    parent_stack + ("list_item",),
+                )
+                if rendered_image:
+                    inline_segments.append(rendered_image)
+                continue
+            break
+        first_line = " ".join(segment for segment in inline_segments if segment).strip()
         lines.append(f"{prefix}{marker}{first_line}".rstrip())
         for child in item_blocks:
             if getattr(child, "type", None) == "list":
