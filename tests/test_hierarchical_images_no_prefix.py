@@ -5,7 +5,18 @@ from pathlib import Path
 
 from core.render.assets_exporter import AssetsExporter
 from core.model.resource_ref import ResourceRef
-from core.model.internal_doc import InternalDoc, Heading, Image, Paragraph
+from core.model.internal_doc import (
+    InternalDoc,
+    Heading,
+    Image,
+    Paragraph,
+    Table,
+    TableRow,
+    TableCell,
+    ListBlock,
+    ListItem,
+    Text,
+)
 
 
 class TestHierarchicalImagesNoPrefix:
@@ -134,7 +145,7 @@ class TestHierarchicalImagesNoPrefix:
     
     def test_image_filename_preservation(self, temp_output_dir):
         """Test that original image filenames are preserved."""
-        
+
         doc = InternalDoc(blocks=[
             Heading(level=1, text="Тест"),
             Heading(level=2, text="Подтест"),
@@ -154,6 +165,69 @@ class TestHierarchicalImagesNoPrefix:
         # Verify filename conversion (special_image_41 -> image41.jpg)
         image_path = assets_dir / "test" / "podtest" / "image41.jpg"  # lowercase after _transliterate fix
         assert image_path.exists()
+
+    def test_images_in_nested_blocks_are_exported(self, temp_output_dir):
+        """Images inside tables and lists should be exported with hierarchy preserved."""
+
+        table_image = Image(resource_id="image101", alt="Table image")
+        list_image = Image(resource_id="image102", alt="List image")
+
+        table = Table(
+            header=TableRow(
+                cells=[
+                    TableCell(
+                        blocks=[Paragraph(inlines=[Text(content="Действие")])]
+                    )
+                ]
+            ),
+            rows=[
+                TableRow(
+                    cells=[
+                        TableCell(
+                            blocks=[table_image]
+                        )
+                    ]
+                )
+            ],
+        )
+
+        list_block = ListBlock(
+            ordered=False,
+            items=[
+                ListItem(
+                    blocks=[
+                        Paragraph(inlines=[Text(content="Шаг 1")]),
+                        list_image,
+                    ]
+                )
+            ],
+        )
+
+        doc = InternalDoc(
+            blocks=[
+                Heading(level=1, text="1 Раздел"),
+                Heading(level=2, text="1.1 Подраздел"),
+                table,
+                list_block,
+            ]
+        )
+
+        resources = [
+            ResourceRef(id="image101", content=b"table", mime_type="image/png", sha256="hash101"),
+            ResourceRef(id="image102", content=b"list", mime_type="image/png", sha256="hash102"),
+        ]
+
+        output_dir = Path(temp_output_dir)
+        assets_dir = output_dir / "images"
+
+        exporter = AssetsExporter(assets_dir)
+        asset_map = exporter.export_hierarchical_images(doc, resources)
+
+        nested_dir = assets_dir / "razdel" / "podrazdel"
+        assert (nested_dir / "image101.png").exists()
+        assert (nested_dir / "image102.png").exists()
+        assert asset_map["image101"] == "images/razdel/podrazdel/image101.png"
+        assert asset_map["image102"] == "images/razdel/podrazdel/image102.png"
     
     def test_expected_cu_admin_install_structure(self, temp_output_dir):
         """Test the expected structure for cu-admin-install.docx based on our requirements."""
