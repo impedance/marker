@@ -468,9 +468,10 @@ def _find_images_in_paragraph(p: ET.Element, relationships: Dict[str, str], medi
                     if caption_para:
                         caption_paragraphs_for_this_image.add(caption_para)
                     
-                    # Create Image block
+                    # Create Image block with better alt text using image name
+                    alt_text = image_name if image_name else f"Image {resource_ref.id}"
                     image = Image(
-                        alt=f"Image {resource_ref.id}",  # Simple alt text
+                        alt=alt_text,
                         resource_id=resource_ref.id,
                         caption=caption
                     )
