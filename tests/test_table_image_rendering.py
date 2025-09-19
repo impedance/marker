@@ -124,6 +124,112 @@ class TestTableImageRendering:
         assert "[Кнопка \\| с символом \\|](/special_image.png)" in result
         assert "::sign-image" not in result
 
+    def test_action_cell_renders_image_list(self):
+        """Cells with multiple images followed by dash descriptions render as lists."""
+        image_one = Image(
+            type="image",
+            resource_id="action_edit",
+            alt="Icon edit",
+            caption="Рисунок 64",
+        )
+        image_two = Image(
+            type="image",
+            resource_id="action_widget",
+            alt="Icon widget",
+            caption="Рисунок 181",
+        )
+        action_paragraph = Paragraph(
+            inlines=[
+                Text(content="– Переключиться в режим редактирования панели."),
+                Text(content=" – Режим редактирования также открывается при создании новой панели."),
+            ]
+        )
+        action_cell = TableCell(blocks=[image_one, image_two, action_paragraph])
+        header = TableRow(
+            cells=[TableCell(blocks=[Paragraph(inlines=[Text(content="Действия")])])]
+        )
+        row = TableRow(cells=[action_cell])
+        table = Table(header=header, rows=[row])
+        doc = InternalDoc(blocks=[table])
+
+        asset_map = {
+            "action_edit": "/assets/action_edit.png",
+            "action_widget": "/assets/action_widget.png",
+        }
+
+        result = render_markdown(doc, asset_map)
+
+        list_lines = [line for line in result.splitlines() if line.startswith("| - [")]
+        assert len(list_lines) == 2
+        assert "- [Рисунок 64](/action_edit.png) Переключиться в режим редактирования панели." in list_lines[0]
+        assert "- [Рисунок 181](/action_widget.png) Режим редактирования также открывается при создании новой панели." in list_lines[1]
+
+    def test_action_cell_with_intro_text_keeps_intro_line(self):
+        """Introductory text before dash segments is preserved above the list."""
+        icon_one = Image(
+            type="image",
+            resource_id="history_added",
+            caption="Рисунок 64",
+        )
+        icon_two = Image(
+            type="image",
+            resource_id="history_removed",
+            caption="Рисунок 65",
+        )
+        paragraph = Paragraph(
+            inlines=[
+                Text(content="История изменений:"),
+                Text(content=" – Добавлены комментарии."),
+                Text(content=" – Удалены комментарии."),
+            ]
+        )
+        cell = TableCell(blocks=[icon_one, icon_two, paragraph])
+        header = TableRow(
+            cells=[TableCell(blocks=[Paragraph(inlines=[Text(content="Действия")])])]
+        )
+        row = TableRow(cells=[cell])
+        table = Table(header=header, rows=[row])
+        doc = InternalDoc(blocks=[table])
+        asset_map = {
+            "history_added": "/assets/history_added.png",
+            "history_removed": "/assets/history_removed.png",
+        }
+
+        result = render_markdown(doc, asset_map)
+        table_lines = [line for line in result.splitlines() if line.startswith("|")]
+
+        assert "| История изменений: |" in table_lines
+        assert "- [Рисунок 64](/history_added.png) Добавлены комментарии." in "\n".join(table_lines)
+        assert "- [Рисунок 65](/history_removed.png) Удалены комментарии." in "\n".join(table_lines)
+
+    def test_paragraph_before_images_does_not_trigger_action_list(self):
+        """Cells with text before images keep default rendering."""
+        lead_paragraph = Paragraph(
+            inlines=[Text(content="- До изображения")] 
+        )
+        icon = Image(
+            type="image",
+            resource_id="before_action",
+            caption="Рисунок 77",
+        )
+        tail_paragraph = Paragraph(
+            inlines=[Text(content="– После изображения.")]
+        )
+        cell = TableCell(blocks=[lead_paragraph, icon, tail_paragraph])
+        header = TableRow(
+            cells=[TableCell(blocks=[Paragraph(inlines=[Text(content="Описание")])])]
+        )
+        row = TableRow(cells=[cell])
+        table = Table(header=header, rows=[row])
+        doc = InternalDoc(blocks=[table])
+        asset_map = {"before_action": "/assets/before_action.png"}
+
+        result = render_markdown(doc, asset_map)
+        lines = result.splitlines()
+
+        assert not any(line.startswith("| - [") for line in lines)
+        assert "| - До изображения [Рисунок 77](/before_action.png) – После изображения. |" in lines
+
     def test_image_in_list_item_uses_link_format(self):
         """Images inside list items should render as links."""
         image_block = Image(

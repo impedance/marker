@@ -182,20 +182,92 @@ def _render_block(
         fence = " ".join(info)
         return f"```{fence}\n{block.code}\n```"
     if type == "table":
+        def _render_image_action_list(cell) -> str | None:
+            blocks = list(cell.blocks)
+            if not blocks:
+                return None
+            images = []
+            index = 0
+            for block in blocks:
+                if getattr(block, "type", None) != "image":
+                    break
+                rendered_image = _render_block(
+                    block,
+                    asset_map,
+                    document_name,
+                    parent_stack + ("table",),
+                )
+                if rendered_image.startswith("::sign-image"):
+                    return None
+                images.append(block)
+                index += 1
+            if not images:
+                return None
+            tail_blocks = blocks[index:]
+            if len(tail_blocks) != 1:
+                return None
+            last_block = tail_blocks[0]
+            if getattr(last_block, "type", None) != "paragraph":
+                return None
+            paragraph_text = "".join(
+                _render_inline_for_table(inline) for inline in last_block.inlines
+            )
+            dash_pattern = re.compile(r"(?:(?<=^)|(?<=\s))[–—]\s*")
+            matches = dash_pattern.findall(paragraph_text)
+            if not matches:
+                return None
+            if len(matches) != len(images):
+                return None
+            parts = dash_pattern.split(paragraph_text)
+            if len(parts) != len(images) + 1:
+                return None
+            intro_text = parts[0].strip()
+            descriptions: List[str] = []
+            for segment in parts[1:]:
+                stripped = segment.strip()
+                if not stripped:
+                    return None
+                descriptions.append(stripped)
+            list_lines: List[str] = []
+            if intro_text:
+                list_lines.append(intro_text)
+            for image, description in zip(images, descriptions):
+                caption = _escape_table_content(_image_sign_text(image))
+                item = f"- [{caption}](/{image.resource_id}.png)"
+                if description:
+                    item = f"{item} {description}"
+                list_lines.append(item)
+            return "\n".join(list_lines)
+
+        def _render_cell(cell) -> str:
+            special = _render_image_action_list(cell)
+            if special is not None:
+                return special
+            cell_parts = [
+                _render_block_for_table(
+                    b,
+                    asset_map,
+                    document_name,
+                    parent_stack,
+                )
+                for b in cell.blocks
+            ]
+            return " ".join(cell_parts).strip()
+
         def _row(r) -> str:
-            cells = []
-            for cell in r.cells:
-                cell_parts = [
-                    _render_block_for_table(
-                        b,
-                        asset_map,
-                        document_name,
-                        parent_stack,
-                    )
-                    for b in cell.blocks
+            rendered_cells = [_render_cell(cell) for cell in r.cells]
+            if any("\n" in cell for cell in rendered_cells):
+                split_cells = [cell.splitlines() for cell in rendered_cells]
+                max_lines = max(len(lines) for lines in split_cells)
+                padded_cells: List[List[str]] = [
+                    lines + [""] * (max_lines - len(lines)) for lines in split_cells
                 ]
-                cells.append(" ".join(cell_parts).strip())
-            return "| " + " | ".join(cells) + " |"
+                assembled_lines = []
+                for line_index in range(max_lines):
+                    line_cells = [cells[line_index] for cells in padded_cells]
+                    assembled_lines.append("| " + " | ".join(line_cells) + " |")
+                return "\n".join(assembled_lines)
+            return "| " + " | ".join(rendered_cells) + " |"
 
         header = _row(block.header)
         sep = "| " + " | ".join(["---"] * len(block.header.cells)) + " |"
