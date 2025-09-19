@@ -212,22 +212,32 @@ def _render_block(
             paragraph_text = "".join(
                 _render_inline_for_table(inline) for inline in last_block.inlines
             )
-            parts = re.split(r"(?:(?<=^)|(?<=\s))[–—]\s*", paragraph_text)
-            if len(parts) <= 1:
+            dash_pattern = re.compile(r"(?:(?<=^)|(?<=\s))[–—]\s*")
+            matches = dash_pattern.findall(paragraph_text)
+            if not matches:
                 return None
-            if parts[0].strip():
+            if len(matches) != len(images):
                 return None
-            descriptions = [segment.strip() for segment in parts[1:] if segment.strip()]
-            if len(descriptions) != len(images):
+            parts = dash_pattern.split(paragraph_text)
+            if len(parts) != len(images) + 1:
                 return None
-            list_items: List[str] = []
+            intro_text = parts[0].strip()
+            descriptions: List[str] = []
+            for segment in parts[1:]:
+                stripped = segment.strip()
+                if not stripped:
+                    return None
+                descriptions.append(stripped)
+            list_lines: List[str] = []
+            if intro_text:
+                list_lines.append(intro_text)
             for image, description in zip(images, descriptions):
                 caption = _escape_table_content(_image_sign_text(image))
                 item = f"- [{caption}](/{image.resource_id}.png)"
                 if description:
                     item = f"{item} {description}"
-                list_items.append(item)
-            return "\n".join(list_items)
+                list_lines.append(item)
+            return "\n".join(list_lines)
 
         def _render_cell(cell) -> str:
             special = _render_image_action_list(cell)
