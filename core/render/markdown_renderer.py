@@ -90,8 +90,10 @@ def _render_list_block(
 ) -> str:
     """Render a list block with proper indentation and nested items."""
     lines: List[str] = []
+    normalized_style = (list_block.list_style or "").lower()
+    is_letter_list = normalized_style in {"lowerletter", "upperletter"}
     for index, item in enumerate(list_block.items, start=1):
-        marker = f"{index}. " if list_block.ordered else "- "
+        marker = "- " if is_letter_list else (f"{index}. " if list_block.ordered else "- ")
         prefix = "  " * level
         item_blocks = list(item.blocks)
         first_line = ""
@@ -124,7 +126,12 @@ def _render_list_block(
                     lines.append(f"{prefix}  {child_line}")
                 else:
                     lines.append("")
-    return "\n".join(lines)
+    rendered_list = "\n".join(lines)
+    if is_letter_list:
+        indent = "  " * level
+        body_lines = [rendered_list] if rendered_list else []
+        return "\n".join([f"{indent}::letter-list", *body_lines, f"{indent}::"])
+    return rendered_list
 
 INLINE_CONTEXTS = {"paragraph", "table", "list_item"}
 

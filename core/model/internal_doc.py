@@ -69,6 +69,7 @@ class ListBlock(BaseModel):
     """An ordered or unordered list."""
     type: Literal["list"] = "list"
     ordered: bool = False
+    list_style: str | None = None
     items: List[ListItem] = Field(default_factory=list)
 
 class TableCell(BaseModel):

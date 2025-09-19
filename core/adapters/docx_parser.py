@@ -945,39 +945,42 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
         return m.group(1) if m else line
 
     prev_text: str = ""
-    list_stack: List[tuple[ListBlock, int, bool]] = []
+    list_stack: List[tuple[ListBlock, int, bool, str | None]] = []
 
     def flush_lists() -> None:
         list_stack.clear()
 
-    def ensure_list_block(level: int, ordered: bool) -> ListBlock:
+    def ensure_list_block(level: int, ordered: bool, list_style: str | None) -> ListBlock:
         nonlocal list_stack
         while list_stack:
-            current_block, current_level, current_ordered = list_stack[-1]
-            if level < current_level or (level == current_level and current_ordered != ordered):
+            current_block, current_level, current_ordered, current_style = list_stack[-1]
+            if level < current_level or (
+                level == current_level
+                and (current_ordered != ordered or current_style != list_style)
+            ):
                 list_stack.pop()
                 continue
             break
 
         if not list_stack:
-            new_block = ListBlock(ordered=ordered)
+            new_block = ListBlock(ordered=ordered, list_style=list_style)
             blocks.append(new_block)
-            list_stack.append((new_block, level, ordered))
+            list_stack.append((new_block, level, ordered, list_style))
             return new_block
 
-        current_block, current_level, _ = list_stack[-1]
+        current_block, current_level, _, _ = list_stack[-1]
         if level == current_level:
             return current_block
 
-        parent_block, _, _ = list_stack[-1]
+        parent_block, _, _, _ = list_stack[-1]
         if parent_block.items:
             parent_item = parent_block.items[-1]
         else:
             parent_item = ListItem(blocks=[])
             parent_block.items.append(parent_item)
-        new_block = ListBlock(ordered=ordered)
+        new_block = ListBlock(ordered=ordered, list_style=list_style)
         parent_item.blocks.append(new_block)
-        list_stack.append((new_block, level, ordered))
+        list_stack.append((new_block, level, ordered, list_style))
         return new_block
     
     for i, el in enumerate(body_elements):
@@ -1140,7 +1143,11 @@ def parse_docx_to_internal_doc(docx_path: str) -> Tuple[InternalDoc, List[Resour
                     if list_info and not is_table_caption(text):
                         fmt, list_level = list_info
                         ordered = fmt not in {"bullet", "none"}
-                        target_list = ensure_list_block(list_level, ordered)
+                        target_list = ensure_list_block(
+                            list_level,
+                            ordered,
+                            fmt if fmt not in {"", None} else None,
+                        )
                         list_item = ListItem(blocks=[])
                         target_list.items.append(list_item)
                         formatted_inlines = _extract_formatted_inlines(p, section_map)
