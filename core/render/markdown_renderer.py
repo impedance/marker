@@ -45,6 +45,13 @@ def _render_block_for_table(block: Block, asset_map: Dict[str, str], document_na
             command = match.group(1)
             return f"```bash Terminal\n{command}\n```"
         return text
+    if type == "image":
+        # For images in table cells, use inline markdown format instead of block format
+        path = asset_map.get(block.resource_id, "about:blank")
+        sign_text = block.caption if block.caption else (block.alt if block.alt else f"Рисунок {block.resource_id}")
+        # Use standard markdown image syntax for table cells
+        escaped_sign = _escape_table_content(sign_text)
+        return f"![{escaped_sign}](/{block.resource_id}.png)"
     # For other block types, render normally and then escape
     rendered = _render_block(block, asset_map, document_name)
     return _escape_table_content(rendered)
