@@ -16,6 +16,7 @@ from typing import List, Optional
 import typer
 from rich.console import Console
 from rich.progress import Progress, TaskID
+from slugify import slugify
 
 
 app = typer.Typer(
@@ -41,11 +42,18 @@ def find_docx_files(search_dir: Path) -> List[Path]:
 
 
 def create_safe_name(docx_path: Path) -> str:
-    """Create a safe archive name from the DOCX file path."""
-    # Remove extension and clean up the name
+    """Create a safe archive name from the DOCX file path with transliteration."""
+    # Remove extension and get the base name
     name = docx_path.stem
-    # Replace problematic characters
-    safe_name = name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    
+    # Use slugify to transliterate and create safe filename
+    # This will convert Cyrillic to Latin and handle special characters
+    safe_name = slugify(name, separator='_', lowercase=False)
+    
+    # If slugify returns empty string (all special chars), use original cleaned name
+    if not safe_name:
+        safe_name = name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    
     return safe_name
 
 
