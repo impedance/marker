@@ -169,3 +169,36 @@ class TestTableImageRendering:
 
         expected = "- [Рисунок 52](/image47.png) – отображение страницы в режиме киоска"
         assert result == expected
+
+    def test_list_item_with_multiple_leading_images_only_inlines_first(self):
+        """Only the first leading image should join the bullet line; others render separately."""
+        first_image = Image(
+            type="image",
+            resource_id="image10",
+            alt="Рисунок 10",
+            caption="Рисунок 10",
+        )
+
+        second_image = Image(
+            type="image",
+            resource_id="image11",
+            alt="Рисунок 11",
+            caption="Рисунок 11",
+        )
+
+        description_block = Paragraph(
+            inlines=[Text(content="– описание шага")]
+        )
+
+        list_item = ListItem(blocks=[first_image, second_image, description_block])
+        list_block = ListBlock(items=[list_item])
+        doc = InternalDoc(blocks=[list_block])
+
+        result = render_markdown(
+            doc,
+            {"image10": "/assets/image10.png", "image11": "/assets/image11.png"},
+        )
+
+        lines = result.splitlines()
+        assert lines[0] == "- [Рисунок 10](/image10.png) – описание шага"
+        assert lines[1] == "  [Рисунок 11](/image11.png)"
